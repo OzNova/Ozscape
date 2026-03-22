@@ -14,9 +14,12 @@ export class ObstacleManager {
     this.height = height;
     this.segment = null;
     this.objects = [];
-    this.gravityZone = null;
+    this.gravityZones = [];
+    this.ionZones = [];
     this.station = null;
     this.gate = null;
+    this.planets = [];
+    this.wormhole = null;
   }
 
   loadSegment(segmentConfig) {
@@ -27,13 +30,13 @@ export class ObstacleManager {
     segmentConfig.debrisFields.forEach((field) => {
       for (let index = 0; index < field.count; index += 1) {
         const t = field.count === 1 ? 0.5 : index / (field.count - 1);
-        const worldX = field.startX + (field.endX - field.startX) * t + this.offsetNoise(index, 160);
-        const worldY = field.top + (field.bottom - field.top) * this.normalizedNoise(index + field.startX, 0.65);
+        const worldX = field.startX + (field.endX - field.startX) * t + this.offsetNoise(index + field.startX, 160);
+        const worldY = field.top + (field.bottom - field.top) * this.normalizedNoise(index + field.endX, 0.65);
         seededObjects.push({
           kind: "debris",
           worldX,
           worldY,
-          radius: 18 + this.normalizedNoise(index + field.endX, 0.82) * 16,
+          radius: 16 + this.normalizedNoise(index + field.endX, 0.82) * 18,
           rotation: this.normalizedNoise(index + 17, 0.24) * Math.PI * 2,
           spin: -0.6 + this.normalizedNoise(index + 9, 0.51) * 1.2
         });
@@ -55,9 +58,12 @@ export class ObstacleManager {
     });
 
     this.objects = seededObjects;
-    this.gravityZone = segmentConfig.gravityZone;
+    this.gravityZones = segmentConfig.gravityZones ?? [];
+    this.ionZones = segmentConfig.ionZones ?? [];
     this.station = segmentConfig.station;
     this.gate = segmentConfig.gate;
+    this.planets = segmentConfig.planets ?? [];
+    this.wormhole = segmentConfig.wormhole ?? null;
   }
 
   reset() {
@@ -78,14 +84,17 @@ export class ObstacleManager {
       }
     });
 
-    const cleanupThreshold = routeProgress - 400;
+    const cleanupThreshold = routeProgress - 500;
     this.objects = this.objects.filter((object) => object.worldX + object.radius > cleanupThreshold);
   }
 
-  draw(ctx, routeProgress, stationCompleted) {
-    this.drawGravityZone(ctx, routeProgress);
-    this.drawStation(ctx, routeProgress, stationCompleted);
-    this.drawGate(ctx, routeProgress, stationCompleted);
+  draw(ctx, routeProgress, state) {
+    this.drawPlanets(ctx, routeProgress);
+    this.drawIonZones(ctx, routeProgress);
+    this.drawGravityZones(ctx, routeProgress);
+    this.drawWormhole(ctx, routeProgress, state.wormholeUsed);
+    this.drawStation(ctx, routeProgress, state.stationCompleted);
+    this.drawGate(ctx, routeProgress, state.stationCompleted);
 
     this.objects.forEach((object) => {
       const screenX = this.toScreenX(object.worldX, routeProgress);
@@ -182,66 +191,215 @@ export class ObstacleManager {
   }
 
   getGravityInfluence(player, routeProgress, resistance) {
-    if (!this.gravityZone) {
-      return { active: false, force: { x: 0, y: 0 }, fuelPenalty: 0 };
+    for (const zone of this.gravityZones) {
+      const screenX = this.toScreenX(zone.worldX, routeProgress);
+      const dx = screenX - player.position.x;
+      const dy = zone.worldY - player.position.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance > zone.radius) {
+        continue;
+      }
+
+      const pullFactor = 1 - distance / zone.radius;
+      const normalizedX = dx / Math.max(distance, 1);
+      const normalizedY = dy / Math.max(distance, 1);
+      const resistanceFactor = Math.max(0.35, 1 - resistance * 0.1);
+      const forceStrength = zone.strength * pullFactor * resistanceFactor;
+
+      return {
+        active: true,
+        label: zone.label,
+        force: {
+          x: normalizedX * forceStrength,
+          y: normalizedY * forceStrength
+        },
+        fuelPenalty: zone.fuelPenalty * pullFactor * resistanceFactor
+      };
     }
 
-    const screenX = this.toScreenX(this.gravityZone.worldX, routeProgress);
-    const dx = screenX - player.position.x;
-    const dy = this.gravityZone.worldY - player.position.y;
-    const distance = Math.hypot(dx, dy);
-    if (distance > this.gravityZone.radius) {
-      return { active: false, force: { x: 0, y: 0 }, fuelPenalty: 0 };
-    }
+    return { active: false, label: "", force: { x: 0, y: 0 }, fuelPenalty: 0 };
+  }
 
-    const pullFactor = 1 - distance / this.gravityZone.radius;
-    const normalizedX = dx / Math.max(distance, 1);
-    const normalizedY = dy / Math.max(distance, 1);
-    const resistanceFactor = Math.max(0.35, 1 - resistance * 0.1);
-    const forceStrength = this.gravityZone.strength * pullFactor * resistanceFactor;
+  getIonStormEffect(player, routeProgress, resistance) {
+    for (const zone of this.ionZones) {
+      const screenX = this.toScreenX(zone.worldX, routeProgress);
+      const dx = Math.abs(screenX - player.position.x);
+      const dy = Math.abs(zone.worldY - player.position.y);
+      if (dx <= zone.width / 2 && dy <= zone.height / 2) {
+        const resistanceFactor = Math.max(0.45, 1 - resistance * 0.08);
+        return {
+          active: true,
+          label: zone.label,
+          fuelPenalty: zone.fuelPenalty * resistanceFactor,
+          controlPenalty: zone.controlPenalty * resistanceFactor
+        };
+      }
+    }
 
     return {
-      active: true,
-      force: {
-        x: normalizedX * forceStrength,
-        y: normalizedY * forceStrength
-      },
-      fuelPenalty: 0.65 * pullFactor * resistanceFactor
+      active: false,
+      label: "",
+      fuelPenalty: 0,
+      controlPenalty: 0
     };
   }
 
-  drawGravityZone(ctx, routeProgress) {
-    if (!this.gravityZone) {
+  getWormholeInfo(player, routeProgress, used) {
+    if (!this.wormhole || used) {
+      return {
+        available: false,
+        inZone: false,
+        screenX: 0,
+        alignment: 0
+      };
+    }
+
+    const screenX = this.toScreenX(this.wormhole.worldX, routeProgress);
+    const dx = Math.abs(screenX - player.position.x);
+    const dy = Math.abs(this.wormhole.worldY - player.position.y);
+    const inZone = dx <= this.wormhole.captureWidth / 2 && dy <= this.wormhole.captureHeight / 2;
+    const alignment = Math.max(0, 1 - dy / (this.wormhole.captureHeight / 2));
+
+    return {
+      available: true,
+      inZone,
+      screenX,
+      alignment
+    };
+  }
+
+  drawPlanets(ctx, routeProgress) {
+    this.planets.forEach((planet) => {
+      const screenX = this.toScreenX(planet.worldX, routeProgress * planet.parallax);
+      const y = planet.worldY;
+      if (screenX < -planet.radius * 1.6 || screenX > this.width + planet.radius * 1.6) {
+        return;
+      }
+
+      ctx.save();
+      const glow = ctx.createRadialGradient(screenX, y, planet.radius * 0.3, screenX, y, planet.radius * 1.6);
+      glow.addColorStop(0, planet.glowColor);
+      glow.addColorStop(1, "rgba(15, 23, 42, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(screenX, y, planet.radius * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      const planetGradient = ctx.createRadialGradient(
+        screenX - planet.radius * 0.3,
+        y - planet.radius * 0.35,
+        planet.radius * 0.2,
+        screenX,
+        y,
+        planet.radius
+      );
+      planetGradient.addColorStop(0, planet.lightColor);
+      planetGradient.addColorStop(0.55, planet.midColor);
+      planetGradient.addColorStop(1, planet.darkColor);
+      ctx.fillStyle = planetGradient;
+      ctx.beginPath();
+      ctx.arc(screenX, y, planet.radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (planet.ring) {
+        ctx.strokeStyle = planet.ring.color;
+        ctx.lineWidth = planet.ring.width;
+        ctx.beginPath();
+        ctx.ellipse(screenX, y, planet.radius * 1.45, planet.radius * 0.4, planet.ring.rotation, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    });
+  }
+
+  drawGravityZones(ctx, routeProgress) {
+    this.gravityZones.forEach((zone) => {
+      const screenX = this.toScreenX(zone.worldX, routeProgress);
+      if (screenX < -zone.radius || screenX > this.width + zone.radius) {
+        return;
+      }
+
+      ctx.save();
+      const gradient = ctx.createRadialGradient(screenX, zone.worldY, 16, screenX, zone.worldY, zone.radius);
+      gradient.addColorStop(0, "rgba(96, 165, 250, 0.32)");
+      gradient.addColorStop(0.45, "rgba(59, 130, 246, 0.14)");
+      gradient.addColorStop(1, "rgba(30, 64, 175, 0.02)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(screenX, zone.worldY, zone.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(125, 211, 252, 0.35)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(screenX, zone.worldY, zone.radius - 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  drawIonZones(ctx, routeProgress) {
+    this.ionZones.forEach((zone) => {
+      const screenX = this.toScreenX(zone.worldX, routeProgress);
+      if (screenX < -zone.width || screenX > this.width + zone.width) {
+        return;
+      }
+
+      ctx.save();
+      const gradient = ctx.createLinearGradient(
+        screenX - zone.width / 2,
+        zone.worldY,
+        screenX + zone.width / 2,
+        zone.worldY
+      );
+      gradient.addColorStop(0, "rgba(34, 197, 94, 0)");
+      gradient.addColorStop(0.5, "rgba(74, 222, 128, 0.18)");
+      gradient.addColorStop(1, "rgba(34, 197, 94, 0)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(screenX - zone.width / 2, zone.worldY - zone.height / 2, zone.width, zone.height);
+      ctx.strokeStyle = "rgba(134, 239, 172, 0.25)";
+      ctx.strokeRect(screenX - zone.width / 2, zone.worldY - zone.height / 2, zone.width, zone.height);
+      ctx.restore();
+    });
+  }
+
+  drawWormhole(ctx, routeProgress, used) {
+    if (!this.wormhole || used) {
       return;
     }
 
-    const screenX = this.toScreenX(this.gravityZone.worldX, routeProgress);
-    if (screenX < -this.gravityZone.radius || screenX > this.width + this.gravityZone.radius) {
+    const screenX = this.toScreenX(this.wormhole.worldX, routeProgress);
+    if (screenX < -240 || screenX > this.width + 240) {
       return;
     }
 
     ctx.save();
-    const gradient = ctx.createRadialGradient(
-      screenX,
-      this.gravityZone.worldY,
-      16,
-      screenX,
-      this.gravityZone.worldY,
-      this.gravityZone.radius
-    );
-    gradient.addColorStop(0, "rgba(96, 165, 250, 0.32)");
-    gradient.addColorStop(0.45, "rgba(59, 130, 246, 0.14)");
-    gradient.addColorStop(1, "rgba(30, 64, 175, 0.02)");
+    const gradient = ctx.createRadialGradient(screenX, this.wormhole.worldY, 18, screenX, this.wormhole.worldY, this.wormhole.radius);
+    gradient.addColorStop(0, "rgba(244, 114, 182, 0.8)");
+    gradient.addColorStop(0.4, "rgba(168, 85, 247, 0.45)");
+    gradient.addColorStop(1, "rgba(59, 7, 100, 0.02)");
     ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.arc(screenX, this.gravityZone.worldY, this.gravityZone.radius, 0, Math.PI * 2);
+    ctx.arc(screenX, this.wormhole.worldY, this.wormhole.radius, 0, Math.PI * 2);
     ctx.fill();
-
-    ctx.strokeStyle = "rgba(125, 211, 252, 0.35)";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(244, 114, 182, 0.55)";
+    ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.arc(screenX, this.gravityZone.worldY, this.gravityZone.radius - 8, 0, Math.PI * 2);
+    ctx.arc(screenX, this.wormhole.worldY, this.wormhole.radius - 8, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.setLineDash([8, 10]);
+    ctx.strokeStyle = "rgba(244, 114, 182, 0.35)";
+    ctx.strokeRect(
+      screenX - this.wormhole.captureWidth / 2,
+      this.wormhole.worldY - this.wormhole.captureHeight / 2,
+      this.wormhole.captureWidth,
+      this.wormhole.captureHeight
+    );
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "18px Trebuchet MS";
+    ctx.textAlign = "center";
+    ctx.fillText("Wormhole Shortcut", screenX, this.wormhole.worldY + this.wormhole.radius + 24);
     ctx.restore();
   }
 
