@@ -4,27 +4,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ozscape</title>
-    <meta name="description" content="A simple standalone canvas space game prototype." />
+    <meta
+      name="description"
+      content="Ozscape is a futuristic space cargo delivery game set across dangerous deep-space routes."
+    />
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <main class="layout">
       <section class="panel">
-        <p class="eyebrow">Ozscape</p>
-        <h1>Space Cargo Prototype</h1>
-        <p class="copy">
-          Pilot the cargo ship with WASD, dodge incoming asteroids, and survive as long as you can.
+        <p class="eyebrow">Ozscape Freight Command</p>
+        <h1 id="panelTitle">Ozscape</h1>
+        <p id="panelCopy" class="copy">
+          Deliver high-value cargo across a hazardous interstellar route and return with enough credits to upgrade your ship.
         </p>
         <div class="hud">
-          <span id="status">Press Start to launch.</span>
-          <span id="score">Coins: 0</span>
+          <span id="status">Initializing command uplink.</span>
+          <span id="score">Credits: 0</span>
+          <span id="objective">Objective: Await mission selection.</span>
         </div>
+        <div id="details" class="details"></div>
+        <div id="upgrades" class="upgrades"></div>
         <div class="actions">
-          <button id="startButton" type="button">Start Run</button>
-          <button id="restartButton" type="button" disabled>Restart</button>
+          <button id="startButton" type="button">Start</button>
+          <button id="restartButton" type="button">Secondary</button>
         </div>
       </section>
-      <canvas id="gameCanvas" width="960" height="540" aria-label="Ozscape game canvas"></canvas>
+      <canvas id="gameCanvas" width="1280" height="720" aria-label="Ozscape game canvas"></canvas>
     </main>
     <script type="module" src="./script.js"></script>
   </body>
