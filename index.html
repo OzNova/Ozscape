@@ -2,18 +2,30 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ozscape</title>
-    <meta
-      name="description"
-      content="A modular space cargo delivery prototype built with Phaser."
-    />
+    <meta name="description" content="A simple standalone canvas space game prototype." />
+    <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <main class="layout">
+      <section class="panel">
+        <p class="eyebrow">Ozscape</p>
+        <h1>Space Cargo Prototype</h1>
+        <p class="copy">
+          Pilot the cargo ship with WASD, dodge incoming asteroids, and survive as long as you can.
+        </p>
+        <div class="hud">
+          <span id="status">Press Start to launch.</span>
+          <span id="score">Distance: 0</span>
+        </div>
+        <div class="actions">
+          <button id="startButton" type="button">Start Run</button>
+          <button id="restartButton" type="button" disabled>Restart</button>
+        </div>
+      </section>
+      <canvas id="gameCanvas" width="960" height="540" aria-label="Ozscape game canvas"></canvas>
+    </main>
+    <script src="./script.js"></script>
   </body>
-  </html>
+</html>

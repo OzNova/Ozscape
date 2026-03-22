@@ -1,26 +1,20 @@
 # Ozscape
 
-Ozscape is a modular Phaser + TypeScript prototype for a space cargo delivery game. The current build includes a playable freight run, fuel management, hazard handling, collision damage, a post-run hangar with upgrades, and scene transitions for restart/progression flow.
+Ozscape is a simple standalone HTML5 Canvas space prototype built with plain HTML, CSS, and vanilla JavaScript.
 
-## Scripts
+## Files
 
-- `npm install`
-- `npm run dev`
-- `npm run build`
+- `index.html`: entry point and canvas container
+- `style.css`: basic page and HUD styling
+- `script.js`: game logic, rendering, and input handling
 
 ## Current Prototype
 
-- One handcrafted + semi-random level segment
-- Smooth keyboard ship controls with boost
-- Fuel, hull, distance, and hazard UI
-- Debris, moving asteroids, gravity anomaly, and refuel station
-- Coin rewards and a hangar upgrade loop
+- Player spaceship controlled with `W`, `A`, `S`, `D`
+- Moving asteroid obstacles
+- Basic collision detection with game over on impact
+- Minimal HUD with start and restart flow
 
-## Architecture
+## Structure
 
-- `src/config`: game data contracts and balance config
-- `src/core`: reusable gameplay state and systems
-- `src/entities`: ship entity implementation
-- `src/hazards`: hazard contracts and active hazard systems
-- `src/scenes`: Phaser scenes for boot/menu/flight/hangar/failure
-- `src/ui`: HUD rendering helpers
+The code stays intentionally small, but it is split into separate classes for the player, obstacles, and the main game loop so new mechanics can be added later without rewriting everything.
