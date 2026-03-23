@@ -313,6 +313,12 @@ const defaultSave = () => ({
 });
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const safeNumber = (value, fallback = 0) => {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+};
+const safeInteger = (value, fallback = 0, min = 0, max = Number.MAX_SAFE_INTEGER) =>
+  clamp(Math.floor(safeNumber(value, fallback)), min, max);
 
 export class Game {
   constructor(ctx, width, height, controls) {
@@ -437,7 +443,7 @@ export class Game {
     this.obstacles.loadSegment(this.segment);
     this.run = {
       ...this.createEmptyRun(),
-      fuel: stats.maxFuel
+      fuel: safeNumber(stats.maxFuel, 45)
     };
     this.state = "segment";
     this.running = true;
@@ -480,6 +486,7 @@ export class Game {
 
   updateSegment(deltaTime) {
     const stats = this.getDerivedStats();
+    const maxFuel = safeNumber(stats.maxFuel, 45);
     const gravity = this.obstacles.getGravityInfluence(
       this.player,
       this.run.routeProgress,
@@ -519,10 +526,13 @@ export class Game {
 
     const passiveDrain = 0.95;
     const thrustDrain = movement.thrusting ? 1.45 : 0;
+    const currentFuel = safeNumber(this.run.fuel, maxFuel);
+    const gravityFuelPenalty = safeNumber(gravity.fuelPenalty, 0);
+    const ionFuelPenalty = safeNumber(ionStorm.fuelPenalty, 0);
     this.run.fuel = clamp(
-      this.run.fuel - (passiveDrain + thrustDrain + gravity.fuelPenalty + ionStorm.fuelPenalty) * deltaTime,
+      currentFuel - (passiveDrain + thrustDrain + gravityFuelPenalty + ionFuelPenalty) * deltaTime,
       0,
-      stats.maxFuel
+      maxFuel
     );
 
     this.run.creditsPreview = Math.floor(this.run.routeProgress / this.segment.length * 100);
@@ -605,7 +615,7 @@ export class Game {
   updateDocking(deltaTime) {
     this.backgroundOffset += 22 * deltaTime;
     this.run.dockingTimer = Math.max(0, this.run.dockingTimer - deltaTime);
-    this.run.fuel = this.getDerivedStats().maxFuel;
+    this.run.fuel = safeNumber(this.getDerivedStats().maxFuel, 45);
 
     if (this.run.dockingTimer === 0) {
       this.run.stationCompleted = true;
@@ -627,10 +637,13 @@ export class Game {
 
     if (this.run.wormholeTimer === 0) {
       this.run.routeProgress = Math.max(this.run.routeProgress, this.segment.wormhole.exitProgress);
+      const maxFuel = safeNumber(this.getDerivedStats().maxFuel, 45);
+      const currentFuel = safeNumber(this.run.fuel, maxFuel);
+      const wormholeFuelBonus = safeNumber(this.segment.wormhole.fuelBonus, 0);
       this.run.fuel = clamp(
-        this.run.fuel + this.segment.wormhole.fuelBonus,
+        currentFuel + wormholeFuelBonus,
         0,
-        this.getDerivedStats().maxFuel
+        maxFuel
       );
       this.run.shortcutBonus = this.segment.wormhole.rewardBonus;
       this.state = "segment";
@@ -805,7 +818,9 @@ export class Game {
   }
 
   drawHud() {
-    const fuelRatio = this.run.fuel / this.getDerivedStats().maxFuel;
+    const maxFuel = safeNumber(this.getDerivedStats().maxFuel, 45);
+    const fuel = safeNumber(this.run.fuel, 0);
+    const fuelRatio = clamp(fuel / maxFuel, 0, 1);
     const progressRatio = clamp(this.run.routeProgress / this.segment.length, 0, 1);
     const fuelPercent = Math.round(fuelRatio * 100);
 
@@ -816,7 +831,7 @@ export class Game {
     this.ctx.strokeRect(18, 18, 560, 166);
 
     this.drawMeter("Fuel", fuelRatio, 42, "#38bdf8", {
-      valueText: `${Math.round(this.run.fuel)} / ${this.getDerivedStats().maxFuel}`,
+      valueText: `${Math.round(fuel)} / ${Math.round(maxFuel)}`,
       alertThreshold: 0.25,
       criticalThreshold: 0.1
     });
@@ -1053,7 +1068,9 @@ export class Game {
     }
 
     if (this.state === "segment") {
-      const fuelRatio = this.run.fuel / this.getDerivedStats().maxFuel;
+      const maxFuel = safeNumber(this.getDerivedStats().maxFuel, 45);
+      const fuel = safeNumber(this.run.fuel, 0);
+      const fuelRatio = clamp(fuel / maxFuel, 0, 1);
       const fuelState = fuelRatio <= 0.1 ? "Critical" : fuelRatio <= 0.25 ? "Low" : "Stable";
 
       titleEl.textContent = this.segment.name;
@@ -1065,7 +1082,7 @@ export class Game {
         ? `Objective: Reach ${this.segment.destinationLabel}.`
         : `Objective: Dock at ${this.segment.stationLabel}.`;
       this.addDetail(detailsEl, `Route progress: ${Math.round(clamp(this.run.routeProgress / this.segment.length, 0, 1) * 100)}%`);
-      this.addDetail(detailsEl, `Fuel remaining: ${Math.round(this.run.fuel)} / ${this.getDerivedStats().maxFuel}`);
+      this.addDetail(detailsEl, `Fuel remaining: ${Math.round(fuel)} / ${Math.round(maxFuel)}`);
       this.addDetail(detailsEl, `Fuel status: ${fuelState}`);
       this.addDetail(detailsEl, `Hazard exposure: ${this.run.hazardExposure.toFixed(1)}s`);
       this.addDetail(detailsEl, `Wormhole: ${this.run.wormholeUsed ? "Used" : "Available after station"}`);
@@ -1178,12 +1195,17 @@ export class Game {
 
   getDerivedStats() {
     const upgrades = this.save.upgrades;
+    const engine = safeInteger(upgrades.engine);
+    const durability = safeInteger(upgrades.durability);
+    const fuelTank = safeInteger(upgrades.fuelTank);
+    const handling = safeInteger(upgrades.handling);
+
     return {
-      cruiseSpeed: 112 + upgrades.engine * 12,
-      maxFuel: 45 + upgrades.fuelTank * 12,
-      handlingFactor: 1 + upgrades.handling * 0.12,
-      dockingAssist: upgrades.durability * 0.22 + upgrades.handling * 0.08,
-      wormholeAssist: upgrades.engine * 0.14 + upgrades.handling * 0.12
+      cruiseSpeed: 112 + engine * 12,
+      maxFuel: Math.max(1, 45 + fuelTank * 12),
+      handlingFactor: 1 + handling * 0.12,
+      dockingAssist: durability * 0.22 + handling * 0.08,
+      wormholeAssist: engine * 0.14 + handling * 0.12
     };
   }
 
@@ -1220,16 +1242,16 @@ export class Game {
     try {
       const parsed = JSON.parse(raw);
       return {
-        credits: parsed.credits ?? 0,
-        bestCredits: parsed.bestCredits ?? 0,
-        completedRuns: parsed.completedRuns ?? 0,
-        unlockedSegments: clamp(parsed.unlockedSegments ?? 1, 1, SEGMENTS.length),
-        completedSegmentIds: parsed.completedSegmentIds ?? [],
+        credits: safeInteger(parsed.credits, 0),
+        bestCredits: safeInteger(parsed.bestCredits, 0),
+        completedRuns: safeInteger(parsed.completedRuns, 0),
+        unlockedSegments: safeInteger(parsed.unlockedSegments, 1, 1, SEGMENTS.length),
+        completedSegmentIds: Array.isArray(parsed.completedSegmentIds) ? parsed.completedSegmentIds : [],
         upgrades: {
-          engine: parsed.upgrades?.engine ?? 0,
-          durability: parsed.upgrades?.durability ?? 0,
-          fuelTank: parsed.upgrades?.fuelTank ?? 0,
-          handling: parsed.upgrades?.handling ?? 0
+          engine: safeInteger(parsed.upgrades?.engine, 0),
+          durability: safeInteger(parsed.upgrades?.durability, 0),
+          fuelTank: safeInteger(parsed.upgrades?.fuelTank, 0),
+          handling: safeInteger(parsed.upgrades?.handling, 0)
         }
       };
     } catch {
