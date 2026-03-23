@@ -2,6 +2,77 @@ import { Player } from "./player.js";
 import { ObstacleManager } from "./obstacles.js";
 
 const SAVE_KEY = "ozscape-save-v3";
+const createDeparture = ({
+  portLabel,
+  planetLabel,
+  skyTop,
+  skyBottom,
+  horizonColor,
+  planetLight,
+  planetMid,
+  planetDark,
+  planetGlow,
+  planetX,
+  planetY,
+  planetRadius,
+  laneTop,
+  laneBottom,
+  laneEndX,
+  gravity
+}) => ({
+  portLabel,
+  planetLabel,
+  skyTop,
+  skyBottom,
+  horizonColor,
+  planetLight,
+  planetMid,
+  planetDark,
+  planetGlow,
+  planetX,
+  planetY,
+  planetRadius,
+  horizonY: 600,
+  pad: {
+    x: 210,
+    y: 548,
+    width: 290,
+    height: 92
+  },
+  loadingZone: {
+    x: 246,
+    y: 520,
+    width: 188,
+    height: 84
+  },
+  loadingDuration: 2.5,
+  cargoCount: 3,
+  laneStartX: 380,
+  laneEndX,
+  laneTop,
+  laneBottom,
+  clearX: laneEndX - 16,
+  clearY: laneTop + 42,
+  gravity,
+  skyline: [
+    { x: 0, y: 532, width: 88, height: 180 },
+    { x: 92, y: 560, width: 64, height: 150 },
+    { x: 160, y: 516, width: 74, height: 196 },
+    { x: 1112, y: 544, width: 96, height: 176 },
+    { x: 1212, y: 570, width: 58, height: 150 }
+  ],
+  beacons: [
+    { x: 404, y: laneTop + 18 },
+    { x: 524, y: laneTop + 8 },
+    { x: 648, y: laneTop + 30 },
+    { x: 772, y: laneBottom - 20 }
+  ],
+  containers: [
+    { x: 114, y: 556, width: 32, height: 24 },
+    { x: 152, y: 586, width: 32, height: 24 },
+    { x: 190, y: 556, width: 32, height: 24 }
+  ]
+});
 
 const SEGMENTS = [
   {
@@ -71,6 +142,24 @@ const SEGMENTS = [
       zoneWidth: 110,
       zoneHeight: 110
     },
+    departure: createDeparture({
+      portLabel: "Khepri Container Spire",
+      planetLabel: "Khepri Prime",
+      skyTop: "#020617",
+      skyBottom: "#0a1930",
+      horizonColor: "#101d34",
+      planetLight: "#93c5fd",
+      planetMid: "#2563eb",
+      planetDark: "#0f172a",
+      planetGlow: "rgba(59, 130, 246, 0.24)",
+      planetX: 1040,
+      planetY: 166,
+      planetRadius: 224,
+      laneTop: 148,
+      laneBottom: 356,
+      laneEndX: 846,
+      gravity: { x: 8, y: 22 }
+    }),
     wormhole: {
       worldX: 4040,
       worldY: 540,
@@ -157,6 +246,24 @@ const SEGMENTS = [
       zoneWidth: 118,
       zoneHeight: 118
     },
+    departure: createDeparture({
+      portLabel: "Atlas Surface Ringport",
+      planetLabel: "Atlas-9",
+      skyTop: "#020617",
+      skyBottom: "#1a2238",
+      horizonColor: "#1b2332",
+      planetLight: "#fde68a",
+      planetMid: "#f59e0b",
+      planetDark: "#78350f",
+      planetGlow: "rgba(245, 158, 11, 0.2)",
+      planetX: 1010,
+      planetY: 152,
+      planetRadius: 246,
+      laneTop: 136,
+      laneBottom: 338,
+      laneEndX: 872,
+      gravity: { x: 9, y: 24 }
+    }),
     wormhole: {
       worldX: 5200,
       worldY: 180,
@@ -251,6 +358,24 @@ const SEGMENTS = [
       zoneWidth: 112,
       zoneHeight: 116
     },
+    departure: createDeparture({
+      portLabel: "Ymir Relay Drydock",
+      planetLabel: "Ymir Outpost World",
+      skyTop: "#01030b",
+      skyBottom: "#0d1731",
+      horizonColor: "#0d1a2e",
+      planetLight: "#c4b5fd",
+      planetMid: "#7c3aed",
+      planetDark: "#312e81",
+      planetGlow: "rgba(124, 58, 237, 0.22)",
+      planetX: 1026,
+      planetY: 178,
+      planetRadius: 214,
+      laneTop: 132,
+      laneBottom: 342,
+      laneEndX: 884,
+      gravity: { x: 10, y: 25 }
+    }),
     wormhole: {
       worldX: 5660,
       worldY: 520,
@@ -439,13 +564,20 @@ export class Game {
 
   startSegment() {
     const stats = this.getDerivedStats();
-    this.player.reset({ x: 190, y: this.height / 2 }, this.save.upgrades);
+    const departure = this.segment.departure;
+    this.player.reset(
+      {
+        x: departure.loadingZone.x + departure.loadingZone.width / 2,
+        y: departure.loadingZone.y + departure.loadingZone.height / 2
+      },
+      this.save.upgrades
+    );
     this.obstacles.loadSegment(this.segment);
     this.run = {
       ...this.createEmptyRun(),
       fuel: safeNumber(stats.maxFuel, 45)
     };
-    this.state = "segment";
+    this.state = "loading";
     this.running = true;
     this.lastTime = performance.now();
     this.backgroundOffset = 0;
@@ -473,7 +605,11 @@ export class Game {
   }
 
   update(deltaTime) {
-    if (this.state === "segment") {
+    if (this.state === "loading") {
+      this.updateLoading(deltaTime);
+    } else if (this.state === "departure") {
+      this.updateDeparture(deltaTime);
+    } else if (this.state === "segment") {
       this.updateSegment(deltaTime);
     } else if (this.state === "docking") {
       this.updateDocking(deltaTime);
@@ -482,6 +618,96 @@ export class Game {
     } else {
       this.running = false;
     }
+  }
+
+  updateLoading(deltaTime) {
+    const stats = this.getDerivedStats();
+    const movement = this.player.update(
+      this.input,
+      deltaTime,
+      { width: this.width, height: this.height },
+      stats
+    );
+    const loading = this.obstacles.getLoadingInfo(this.player);
+    const loadRate = 0.6 + loading.alignment * 0.6 + stats.dockingAssist * 0.16;
+    const unloadRate = 0.8;
+
+    if (loading.inZone && movement.stable) {
+      this.run.loadingProgress = clamp(
+        this.run.loadingProgress + loadRate * deltaTime,
+        0,
+        this.segment.departure.loadingDuration
+      );
+    } else {
+      this.run.loadingProgress = clamp(
+        this.run.loadingProgress - unloadRate * deltaTime,
+        0,
+        this.segment.departure.loadingDuration
+      );
+    }
+
+    this.run.cargoLoaded = Math.floor(
+      this.run.loadingProgress / Math.max(this.segment.departure.loadingDuration, 0.1) * this.segment.departure.cargoCount
+    );
+    this.run.fuel = safeNumber(this.getDerivedStats().maxFuel, 45);
+    this.backgroundOffset += 10 * deltaTime;
+
+    if (this.run.loadingProgress >= this.segment.departure.loadingDuration) {
+      this.run.cargoLoaded = this.segment.departure.cargoCount;
+      this.state = "departure";
+    }
+
+    this.renderPanel();
+  }
+
+  updateDeparture(deltaTime) {
+    const stats = this.getDerivedStats();
+    const maxFuel = safeNumber(stats.maxFuel, 45);
+    const departure = this.segment.departure;
+    const departureForce = this.obstacles.getDepartureForce(this.player, this.run.departureProgress);
+    const movement = this.player.update(
+      this.input,
+      deltaTime,
+      { width: this.width, height: this.height },
+      stats,
+      [departureForce]
+    );
+
+    this.backgroundOffset += 24 * deltaTime;
+    this.run.fuel = clamp(
+      safeNumber(this.run.fuel, maxFuel) - (0.28 + (movement.thrusting ? 0.44 : 0)) * deltaTime,
+      0,
+      maxFuel
+    );
+
+    const horizontalRatio = clamp(
+      (this.player.position.x - departure.loadingZone.x) / Math.max(departure.clearX - departure.loadingZone.x, 1),
+      0,
+      1
+    );
+    const verticalRatio = clamp(
+      (departure.pad.y - this.player.position.y) / Math.max(departure.pad.y - departure.clearY, 1),
+      0,
+      1
+    );
+    this.run.departureProgress = clamp(Math.max(this.run.departureProgress, horizontalRatio * 0.65 + verticalRatio * 0.35), 0, 1);
+
+    if (
+      this.player.position.x >= departure.clearX ||
+      (horizontalRatio >= 0.82 && verticalRatio >= 0.55)
+    ) {
+      this.state = "segment";
+      this.run.routeProgress = 120;
+      this.player.position.x = 210;
+      this.player.position.y = clamp(this.player.position.y, 130, this.height - 140);
+    }
+
+    if (this.run.fuel <= 0) {
+      this.failSegment("Fuel reserves depleted during departure.");
+      return;
+    }
+
+    this.renderPanel();
   }
 
   updateSegment(deltaTime) {
@@ -732,14 +958,21 @@ export class Game {
   draw() {
     this.ctx.clearRect(0, 0, this.width, this.height);
 
-    if (this.state === "segment" || this.state === "docking" || this.state === "wormholeTransit") {
+    if (
+      this.state === "loading" ||
+      this.state === "departure" ||
+      this.state === "segment" ||
+      this.state === "docking" ||
+      this.state === "wormholeTransit"
+    ) {
       this.drawSegmentScene();
       return;
     }
 
     this.drawBackdrop();
+    this.drawMenuPreview();
     if (this.state === "menu") {
-      this.drawCenterCard("Ozscape", "Build a freight empire across dangerous star routes.");
+      this.drawCenterCard("Ozscape", "Launch from living worlds, load cargo, and thread dangerous freight lanes.");
     } else if (this.state === "campaignMap") {
       this.drawCenterCard("Campaign Map", this.segment.subtitle);
       this.drawCampaignMap();
@@ -760,6 +993,17 @@ export class Game {
       return;
     }
 
+    if (this.state === "loading" || this.state === "departure") {
+      this.obstacles.drawDepartureScene(this.ctx, this.run, this.player, this.time);
+      this.player.draw(this.ctx, {
+        thrusting: this.player.getTelemetry().thrusting,
+        highlight: true,
+        time: this.time
+      });
+      this.drawDepartureHud();
+      return;
+    }
+
     this.drawBackdrop();
     this.drawRouteBands();
     this.obstacles.draw(this.ctx, this.run.routeProgress, this.run);
@@ -773,6 +1017,48 @@ export class Game {
     if (this.state === "docking") {
       this.drawCenterCard("Docking", "Refueling and cargo systems recalibration in progress.");
     }
+  }
+
+  drawDepartureHud() {
+    const maxFuel = safeNumber(this.getDerivedStats().maxFuel, 45);
+    const fuel = safeNumber(this.run.fuel, 0);
+    const fuelRatio = clamp(fuel / maxFuel, 0, 1);
+    const loadingRatio = clamp(
+      this.run.loadingProgress / Math.max(this.segment.departure.loadingDuration, 0.1),
+      0,
+      1
+    );
+
+    this.ctx.fillStyle = "rgba(4, 13, 26, 0.82)";
+    this.ctx.fillRect(26, 22, 600, 154);
+    this.ctx.strokeStyle = "rgba(125, 211, 252, 0.4)";
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(26, 22, 600, 154);
+
+    this.drawMeter("Fuel", fuelRatio, 46, "#38bdf8", {
+      valueText: `${Math.round(fuel)} / ${Math.round(maxFuel)}`
+    });
+    this.drawMeter(
+      this.state === "loading" ? "Cargo" : "Departure",
+      this.state === "loading" ? loadingRatio : this.run.departureProgress,
+      90,
+      this.state === "loading" ? "#f59e0b" : "#22c55e",
+      {
+        valueText: this.state === "loading"
+          ? `${this.run.cargoLoaded} / ${this.segment.departure.cargoCount}`
+          : `${Math.round(this.run.departureProgress * 100)}%`
+      }
+    );
+
+    this.ctx.fillStyle = "#f8fafc";
+    this.ctx.font = "16px Trebuchet MS";
+    this.ctx.fillText(
+      this.state === "loading"
+        ? "Hold inside the loading cradle while the containers are transferred."
+        : "Lift clear of the port, stay in the lane, then break into open space.",
+      40,
+      142
+    );
   }
 
   drawBackdrop() {
@@ -802,6 +1088,63 @@ export class Game {
     this.ctx.beginPath();
     this.ctx.arc(this.width * 0.22, this.height * 0.76, 240, 0, Math.PI * 2);
     this.ctx.fill();
+  }
+
+  drawMenuPreview() {
+    const departure = this.segment.departure;
+
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.7;
+    const glow = this.ctx.createRadialGradient(
+      this.width * 0.8,
+      this.height * 0.26,
+      departure.planetRadius * 0.25,
+      this.width * 0.8,
+      this.height * 0.26,
+      departure.planetRadius * 1.2
+    );
+    glow.addColorStop(0, departure.planetGlow);
+    glow.addColorStop(1, "rgba(15, 23, 42, 0)");
+    this.ctx.fillStyle = glow;
+    this.ctx.beginPath();
+    this.ctx.arc(this.width * 0.8, this.height * 0.26, departure.planetRadius * 1.2, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    const previewPlanet = this.ctx.createRadialGradient(
+      this.width * 0.76,
+      this.height * 0.22,
+      departure.planetRadius * 0.18,
+      this.width * 0.8,
+      this.height * 0.26,
+      departure.planetRadius * 0.92
+    );
+    previewPlanet.addColorStop(0, departure.planetLight);
+    previewPlanet.addColorStop(0.55, departure.planetMid);
+    previewPlanet.addColorStop(1, departure.planetDark);
+    this.ctx.fillStyle = previewPlanet;
+    this.ctx.beginPath();
+    this.ctx.arc(this.width * 0.8, this.height * 0.26, departure.planetRadius * 0.92, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    this.ctx.fillStyle = departure.horizonColor;
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, this.height * 0.8);
+    this.ctx.quadraticCurveTo(this.width * 0.4, this.height * 0.7, this.width, this.height * 0.84);
+    this.ctx.lineTo(this.width, this.height);
+    this.ctx.lineTo(0, this.height);
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    this.ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+    this.ctx.fillRect(120, this.height * 0.68, 220, 54);
+    this.ctx.strokeStyle = "rgba(125, 211, 252, 0.3)";
+    this.ctx.strokeRect(120, this.height * 0.68, 220, 54);
+    this.ctx.fillStyle = "#e2e8f0";
+    this.ctx.font = "18px Trebuchet MS";
+    this.ctx.textAlign = "left";
+    this.ctx.fillText(departure.portLabel, 144, this.height * 0.715);
+    this.ctx.fillText(departure.planetLabel, 144, this.height * 0.748);
+    this.ctx.restore();
   }
 
   drawRouteBands() {
@@ -1022,15 +1365,16 @@ export class Game {
     if (this.state === "menu") {
       titleEl.textContent = "Ozscape";
       copyEl.textContent =
-        "Command a deep-space freight hauler across dangerous routes, dock at remote stations, gamble on wormhole shortcuts, and turn payouts into a stronger ship.";
-      statusLabel.textContent = "Command uplink stable.";
-      objectiveLabel.textContent = "Objective: Open the campaign map.";
+        "Run a futuristic cargo line from planetary ports to distant gates. Load containers, launch cleanly, survive the route, and reinvest every payout into a stronger freighter.";
+      statusLabel.textContent = "Freight command online.";
+      objectiveLabel.textContent = "Objective: Open the campaign map and prepare a launch.";
       this.addDetail(detailsEl, `Unlocked segments: ${this.save.unlockedSegments} / ${SEGMENTS.length}`);
       this.addDetail(detailsEl, `Completed runs: ${this.save.completedRuns}`);
       this.addDetail(detailsEl, `Best payout: ${this.save.bestCredits} credits`);
-      startButton.textContent = "Campaign Map";
+      this.addDetail(detailsEl, `Current launch world: ${this.segment.departure.planetLabel}`);
+      startButton.textContent = "Open Campaign";
       startButton.disabled = false;
-      restartButton.textContent = "Reset Save";
+      restartButton.textContent = "Reset Command";
       restartButton.disabled = false;
       return;
     }
@@ -1053,17 +1397,52 @@ export class Game {
 
     if (this.state === "briefing") {
       titleEl.textContent = this.segment.name;
-      copyEl.textContent = this.segment.briefing;
+      copyEl.textContent = `${this.segment.briefing} Departure begins from ${this.segment.departure.portLabel} on ${this.segment.departure.planetLabel}.`;
       statusLabel.textContent = "Mission packet received.";
-      objectiveLabel.textContent = `Objective: Dock at ${this.segment.stationLabel}, then reach ${this.segment.destinationLabel}.`;
+      objectiveLabel.textContent = `Objective: Load cargo, launch from ${this.segment.departure.portLabel}, dock at ${this.segment.stationLabel}, then reach ${this.segment.destinationLabel}.`;
       this.addDetail(detailsEl, `Planetary landmarks: ${this.segment.planets.length}`);
       this.addDetail(detailsEl, `Soft hazards: ${this.segment.gravityZones.length + this.segment.ionZones.length}`);
       this.addDetail(detailsEl, `Shortcut: ${this.segment.wormhole ? "Optional wormhole branch" : "None"}`);
       this.addDetail(detailsEl, "Warning: any solid collision immediately fails the route.");
-      startButton.textContent = "Launch Route";
+      this.addDetail(detailsEl, `Departure port: ${this.segment.departure.portLabel}`);
+      startButton.textContent = "Begin Loading";
       startButton.disabled = false;
       restartButton.textContent = "Back";
       restartButton.disabled = false;
+      return;
+    }
+
+    if (this.state === "loading") {
+      titleEl.textContent = this.segment.departure.portLabel;
+      copyEl.textContent =
+        "Your freighter is on the pad. Hold position inside the loading cradle while the ground crew locks the containers into the cargo spine.";
+      statusLabel.textContent = "Planetary cargo transfer in progress.";
+      objectiveLabel.textContent = "Objective: Stay stable inside the loading zone until cargo is secured.";
+      this.addDetail(detailsEl, `World: ${this.segment.departure.planetLabel}`);
+      this.addDetail(detailsEl, `Cargo loaded: ${this.run.cargoLoaded} / ${this.segment.departure.cargoCount}`);
+      this.addDetail(detailsEl, `Loading progress: ${Math.round(clamp(this.run.loadingProgress / this.segment.departure.loadingDuration, 0, 1) * 100)}%`);
+      this.addDetail(detailsEl, `Fuel reserves: ${Math.round(this.run.fuel)} / ${Math.round(this.getDerivedStats().maxFuel)}`);
+      startButton.textContent = "Loading";
+      startButton.disabled = true;
+      restartButton.textContent = "Loading";
+      restartButton.disabled = true;
+      return;
+    }
+
+    if (this.state === "departure") {
+      titleEl.textContent = "Departure Corridor";
+      copyEl.textContent =
+        "Containers are secured. Thrust up and forward through the port lane, clear the planetary pull, and merge into the outbound route.";
+      statusLabel.textContent = "Launch clearance granted.";
+      objectiveLabel.textContent = "Objective: Exit the cargo port and reach open space.";
+      this.addDetail(detailsEl, `Departure progress: ${Math.round(this.run.departureProgress * 100)}%`);
+      this.addDetail(detailsEl, `Cargo status: Locked for transit`);
+      this.addDetail(detailsEl, `Fuel reserves: ${Math.round(this.run.fuel)} / ${Math.round(this.getDerivedStats().maxFuel)}`);
+      this.addDetail(detailsEl, `Planetary gravity: Active`);
+      startButton.textContent = "Launching";
+      startButton.disabled = true;
+      restartButton.textContent = "Launching";
+      restartButton.disabled = true;
       return;
     }
 
@@ -1074,7 +1453,7 @@ export class Game {
       const fuelState = fuelRatio <= 0.1 ? "Critical" : fuelRatio <= 0.25 ? "Low" : "Stable";
 
       titleEl.textContent = this.segment.name;
-      copyEl.textContent = "Keep the freighter clean, manage fuel, and decide whether the wormhole shortcut is worth the risk.";
+      copyEl.textContent = "The freight hauler is clear of the planet. Keep the ship intact, manage fuel, and decide whether the wormhole shortcut is worth the risk.";
       statusLabel.textContent = this.run.stationCompleted
         ? "Refuel complete. Destination gate is active."
         : `Approach ${this.segment.stationLabel} and stabilize for docking.`;
@@ -1201,11 +1580,11 @@ export class Game {
     const handling = safeInteger(upgrades.handling);
 
     return {
-      cruiseSpeed: 112 + engine * 12,
+      cruiseSpeed: 104 + engine * 11,
       maxFuel: Math.max(1, 45 + fuelTank * 12),
-      handlingFactor: 1 + handling * 0.12,
-      dockingAssist: durability * 0.22 + handling * 0.08,
-      wormholeAssist: engine * 0.14 + handling * 0.12
+      handlingFactor: 1 + handling * 0.1,
+      dockingAssist: durability * 0.24 + handling * 0.1,
+      wormholeAssist: engine * 0.13 + handling * 0.1
     };
   }
 
@@ -1219,6 +1598,9 @@ export class Game {
     return {
       routeProgress: 0,
       fuel: 0,
+      loadingProgress: 0,
+      cargoLoaded: 0,
+      departureProgress: 0,
       dockingProgress: 0,
       dockingTimer: 0,
       dockingQuality: 1,

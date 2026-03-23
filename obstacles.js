@@ -20,6 +20,7 @@ export class ObstacleManager {
     this.gate = null;
     this.planets = [];
     this.wormhole = null;
+    this.departure = null;
   }
 
   loadSegment(segmentConfig) {
@@ -64,6 +65,7 @@ export class ObstacleManager {
     this.gate = segmentConfig.gate;
     this.planets = segmentConfig.planets ?? [];
     this.wormhole = segmentConfig.wormhole ?? null;
+    this.departure = segmentConfig.departure ?? null;
   }
 
   reset() {
@@ -115,6 +117,226 @@ export class ObstacleManager {
       ctx.fill();
       ctx.restore();
     });
+  }
+
+  drawDepartureScene(ctx, state, player, time) {
+    if (!this.departure) {
+      return;
+    }
+
+    const skyGradient = ctx.createLinearGradient(0, 0, 0, this.height);
+    skyGradient.addColorStop(0, this.departure.skyTop);
+    skyGradient.addColorStop(0.58, this.departure.skyBottom);
+    skyGradient.addColorStop(1, "#020617");
+    ctx.fillStyle = skyGradient;
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    ctx.fillStyle = "rgba(226, 232, 240, 0.76)";
+    for (let index = 0; index < 95; index += 1) {
+      const x = (index * 173 + time * 4 * ((index % 4) + 1)) % this.width;
+      const y = (index * 97) % (this.departure.horizonY - 140);
+      const size = index % 11 === 0 ? 3 : 2;
+      ctx.fillRect(x, y, size, size);
+    }
+
+    const planetGlow = ctx.createRadialGradient(
+      this.departure.planetX,
+      this.departure.planetY,
+      this.departure.planetRadius * 0.3,
+      this.departure.planetX,
+      this.departure.planetY,
+      this.departure.planetRadius * 1.25
+    );
+    planetGlow.addColorStop(0, this.departure.planetGlow);
+    planetGlow.addColorStop(1, "rgba(15, 23, 42, 0)");
+    ctx.fillStyle = planetGlow;
+    ctx.beginPath();
+    ctx.arc(this.departure.planetX, this.departure.planetY, this.departure.planetRadius * 1.25, 0, Math.PI * 2);
+    ctx.fill();
+
+    const planetGradient = ctx.createRadialGradient(
+      this.departure.planetX - this.departure.planetRadius * 0.28,
+      this.departure.planetY - this.departure.planetRadius * 0.22,
+      this.departure.planetRadius * 0.15,
+      this.departure.planetX,
+      this.departure.planetY,
+      this.departure.planetRadius
+    );
+    planetGradient.addColorStop(0, this.departure.planetLight);
+    planetGradient.addColorStop(0.55, this.departure.planetMid);
+    planetGradient.addColorStop(1, this.departure.planetDark);
+    ctx.fillStyle = planetGradient;
+    ctx.beginPath();
+    ctx.arc(this.departure.planetX, this.departure.planetY, this.departure.planetRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = this.departure.horizonColor;
+    ctx.beginPath();
+    ctx.moveTo(0, this.departure.horizonY);
+    ctx.quadraticCurveTo(this.width * 0.5, this.departure.horizonY - 46, this.width, this.departure.horizonY + 16);
+    ctx.lineTo(this.width, this.height);
+    ctx.lineTo(0, this.height);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(30, 41, 59, 0.75)";
+    this.departure.skyline.forEach((building, index) => {
+      const pulse = Math.sin(time * 1.5 + index) * 4;
+      ctx.fillRect(building.x, building.y - pulse, building.width, building.height + pulse);
+    });
+
+    ctx.fillStyle = "rgba(56, 189, 248, 0.2)";
+    ctx.fillRect(
+      this.departure.laneStartX,
+      this.departure.laneTop,
+      this.departure.laneEndX - this.departure.laneStartX,
+      this.departure.laneBottom - this.departure.laneTop
+    );
+    ctx.strokeStyle = "rgba(125, 211, 252, 0.35)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 12]);
+    ctx.strokeRect(
+      this.departure.laneStartX,
+      this.departure.laneTop,
+      this.departure.laneEndX - this.departure.laneStartX,
+      this.departure.laneBottom - this.departure.laneTop
+    );
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = "rgba(15, 23, 42, 0.94)";
+    ctx.fillRect(
+      this.departure.pad.x,
+      this.departure.pad.y,
+      this.departure.pad.width,
+      this.departure.pad.height
+    );
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.42)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(
+      this.departure.pad.x,
+      this.departure.pad.y,
+      this.departure.pad.width,
+      this.departure.pad.height
+    );
+
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.4)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(this.departure.pad.x + 24, this.departure.pad.y + this.departure.pad.height / 2);
+    ctx.lineTo(this.departure.pad.x + this.departure.pad.width - 24, this.departure.pad.y + this.departure.pad.height / 2);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(8, 15, 30, 0.94)";
+    ctx.fillRect(
+      this.departure.loadingZone.x,
+      this.departure.loadingZone.y,
+      this.departure.loadingZone.width,
+      this.departure.loadingZone.height
+    );
+    ctx.strokeStyle = "rgba(103, 232, 249, 0.58)";
+    ctx.strokeRect(
+      this.departure.loadingZone.x,
+      this.departure.loadingZone.y,
+      this.departure.loadingZone.width,
+      this.departure.loadingZone.height
+    );
+
+    this.drawCargoContainers(ctx, state, player);
+    this.drawDepartureLights(ctx, time);
+
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "18px Trebuchet MS";
+    ctx.textAlign = "left";
+    ctx.fillText(this.departure.portLabel, this.departure.pad.x, this.departure.pad.y - 16);
+    ctx.fillText(this.departure.planetLabel, 44, 58);
+  }
+
+  drawCargoContainers(ctx, state, player) {
+    if (!this.departure) {
+      return;
+    }
+
+    const loadedCount = Math.floor(state.loadingProgress / Math.max(this.departure.loadingDuration, 0.1) * this.departure.cargoCount);
+    for (let index = 0; index < this.departure.cargoCount; index += 1) {
+      const container = this.departure.containers[index];
+      let x = container.x;
+      let y = container.y;
+
+      if (index < loadedCount) {
+        const loadedOffset = index * 10;
+        x = player.position.x - 24 - loadedOffset;
+        y = player.position.y - 16 + index * 12;
+      } else if (state.loadingProgress > index / this.departure.cargoCount) {
+        const segmentProgress = clamp(
+          (state.loadingProgress - index / this.departure.cargoCount) * this.departure.cargoCount,
+          0,
+          1
+        );
+        x = container.x + (player.position.x - 26 - container.x) * segmentProgress;
+        y = container.y + (player.position.y - 6 - container.y) * segmentProgress;
+      }
+
+      ctx.fillStyle = "#334155";
+      ctx.fillRect(x, y, container.width, container.height);
+      ctx.strokeStyle = "#67e8f9";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, container.width, container.height);
+      ctx.fillStyle = "rgba(148, 163, 184, 0.45)";
+      ctx.fillRect(x + 3, y + 3, container.width - 6, 4);
+    }
+  }
+
+  drawDepartureLights(ctx, time) {
+    if (!this.departure) {
+      return;
+    }
+
+    this.departure.beacons.forEach((beacon, index) => {
+      const glow = 0.35 + Math.sin(time * 4 + index) * 0.15;
+      ctx.fillStyle = `rgba(125, 211, 252, ${glow})`;
+      ctx.beginPath();
+      ctx.arc(beacon.x, beacon.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(248, 250, 252, 0.95)";
+      ctx.beginPath();
+      ctx.arc(beacon.x, beacon.y, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  getLoadingInfo(player) {
+    if (!this.departure) {
+      return { inZone: false, alignment: 0 };
+    }
+
+    const zone = this.departure.loadingZone;
+    const playerBounds = player.getBounds();
+    const overlap = !(
+      playerBounds.x + playerBounds.width < zone.x ||
+      playerBounds.x > zone.x + zone.width ||
+      playerBounds.y + playerBounds.height < zone.y ||
+      playerBounds.y > zone.y + zone.height
+    );
+    const centerX = zone.x + zone.width / 2;
+    const centerY = zone.y + zone.height / 2;
+    const distance = Math.hypot(player.position.x - centerX, player.position.y - centerY);
+    const alignment = Math.max(0, 1 - distance / 90);
+
+    return { inZone: overlap, alignment, zone };
+  }
+
+  getDepartureForce(player, progress = 0) {
+    if (!this.departure) {
+      return { x: 0, y: 0 };
+    }
+
+    const gravityPull = this.departure.gravity.y * (1 - progress * 0.5);
+    const sideBias = this.departure.gravity.x;
+    const altitudeAssist = player.position.y < this.departure.pad.y ? -10 : 0;
+    return {
+      x: sideBias,
+      y: gravityPull + altitudeAssist
+    };
   }
 
   getSolidCollision(player, routeProgress) {
@@ -474,4 +696,8 @@ export class ObstacleManager {
   offsetNoise(seed, range) {
     return (this.normalizedNoise(seed, 0.41) - 0.5) * range;
   }
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }

@@ -2,9 +2,9 @@ export class Player {
   constructor(x, y) {
     this.width = 48;
     this.height = 28;
-    this.baseAcceleration = 560;
-    this.baseMaxSpeed = 280;
-    this.baseDamping = 4.8;
+    this.baseAcceleration = 470;
+    this.baseMaxSpeed = 252;
+    this.baseDamping = 3.75;
     this.reset({ x, y }, {
       engine: 0,
       handling: 0,
@@ -16,6 +16,7 @@ export class Player {
     this.position = { x: spawn.x, y: spawn.y };
     this.velocity = { x: 0, y: 0 };
     this.orientation = 0;
+    this.renderAngle = 0;
     this.lastThrusting = false;
     this.lastStats = { ...stats };
   }
@@ -28,17 +29,18 @@ export class Player {
     const intensity = Math.hypot(horizontal, vertical);
     const thrusting = intensity > 0;
 
-    const handlingFactor = 1 + stats.handling * 0.12;
-    const acceleration = this.baseAcceleration + stats.engine * 34;
-    const maxSpeed = this.baseMaxSpeed + stats.engine * 18 + stats.handling * 8;
-    const damping = Math.max(2.8, this.baseDamping - stats.handling * 0.22);
+    const handlingFactor = 1 + stats.handling * 0.1;
+    const acceleration = this.baseAcceleration + stats.engine * 28;
+    const maxSpeed = this.baseMaxSpeed + stats.engine * 16 + stats.handling * 6;
+    const damping = Math.max(2.3, this.baseDamping - stats.handling * 0.16);
 
     if (thrusting) {
       const normalizedX = horizontal / intensity;
       const normalizedY = vertical / intensity;
-      this.velocity.x += normalizedX * acceleration * handlingFactor * deltaTime;
+      const lateralPenalty = normalizedX < 0.1 ? 0.88 : 1;
+      this.velocity.x += normalizedX * acceleration * handlingFactor * lateralPenalty * deltaTime;
       this.velocity.y += normalizedY * acceleration * handlingFactor * deltaTime;
-      this.orientation = Math.atan2(normalizedY, Math.max(normalizedX, 0.15));
+      this.orientation = Math.atan2(normalizedY, Math.max(normalizedX, 0.1));
     }
 
     environmentForces.forEach((force) => {
@@ -81,13 +83,16 @@ export class Player {
       this.velocity.y = 0;
     }
 
+    const driftAngle = speed > 6 ? Math.atan2(this.velocity.y, Math.max(this.velocity.x, 0.1)) : this.orientation;
+    const targetAngle = thrusting ? this.orientation : driftAngle;
+    this.renderAngle = lerpAngle(this.renderAngle, targetAngle, clamp(deltaTime * 7.5, 0, 1));
     this.lastThrusting = thrusting;
 
     return {
       thrusting,
-      speed: Math.hypot(this.velocity.x, this.velocity.y),
-      stable: Math.hypot(this.velocity.x, this.velocity.y) < 42 + stats.durability * 8,
-      driftRatio: clamp(Math.hypot(this.velocity.x, this.velocity.y) / Math.max(maxSpeed, 1), 0, 1)
+      speed,
+      stable: speed < 40 + stats.durability * 8,
+      driftRatio: clamp(speed / Math.max(maxSpeed, 1), 0, 1)
     };
   }
 
@@ -100,84 +105,102 @@ export class Player {
     return {
       speed: Math.hypot(this.velocity.x, this.velocity.y),
       velocity: { ...this.velocity },
-      orientation: this.orientation,
+      orientation: this.renderAngle,
       thrusting: this.lastThrusting
     };
   }
 
   draw(ctx, renderState = {}) {
-    const velocityAngle = Math.atan2(this.velocity.y, Math.max(this.velocity.x, 40)) * 0.36;
-    const angle = this.lastThrusting ? this.orientation * 0.48 : velocityAngle;
-    const glowAlpha = renderState.highlight ? 0.25 : 0.12;
+    const glowAlpha = renderState.highlight ? 0.34 : 0.2;
 
     ctx.save();
     ctx.translate(this.position.x, this.position.y);
-    ctx.rotate(angle);
+    ctx.rotate(this.renderAngle);
 
-    ctx.fillStyle = `rgba(103, 232, 249, ${glowAlpha})`;
+    ctx.fillStyle = `rgba(56, 189, 248, ${glowAlpha})`;
     ctx.beginPath();
-    ctx.arc(0, 0, 34, 0, Math.PI * 2);
+    ctx.arc(0, 0, 42, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "rgba(103, 232, 249, 0.2)";
+    ctx.strokeStyle = "rgba(226, 232, 240, 0.78)";
+    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(30, 0);
-    ctx.lineTo(-20, -18);
-    ctx.lineTo(-28, 0);
-    ctx.lineTo(-20, 18);
+    ctx.lineTo(-18, -20);
+    ctx.lineTo(-30, 0);
+    ctx.lineTo(-18, 20);
+    ctx.closePath();
+    ctx.stroke();
+
+    ctx.fillStyle = "#0f172a";
+    ctx.beginPath();
+    ctx.moveTo(30, 0);
+    ctx.lineTo(-18, -20);
+    ctx.lineTo(-30, 0);
+    ctx.lineTo(-18, 20);
     ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = "#e2e8f0";
     ctx.beginPath();
-    ctx.moveTo(26, 0);
-    ctx.lineTo(-16, -14);
-    ctx.lineTo(-10, 0);
-    ctx.lineTo(-16, 14);
+    ctx.moveTo(24, 0);
+    ctx.lineTo(-12, -14);
+    ctx.lineTo(-2, 0);
+    ctx.lineTo(-12, 14);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = "#67e8f9";
+    ctx.fillStyle = "#38bdf8";
     ctx.beginPath();
-    ctx.moveTo(8, 0);
-    ctx.lineTo(-6, -5);
-    ctx.lineTo(-9, 0);
-    ctx.lineTo(-6, 5);
+    ctx.moveTo(11, 0);
+    ctx.lineTo(-2, -5);
+    ctx.lineTo(-8, 0);
+    ctx.lineTo(-2, 5);
     ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = "#94a3b8";
     ctx.beginPath();
-    ctx.moveTo(-8, -9);
-    ctx.lineTo(-18, -15);
-    ctx.lineTo(-15, -5);
+    ctx.moveTo(-10, -10);
+    ctx.lineTo(-21, -16);
+    ctx.lineTo(-15, -4);
     ctx.closePath();
     ctx.fill();
 
     ctx.beginPath();
-    ctx.moveTo(-8, 9);
-    ctx.lineTo(-18, 15);
-    ctx.lineTo(-15, 5);
+    ctx.moveTo(-10, 10);
+    ctx.lineTo(-21, 16);
+    ctx.lineTo(-15, 4);
     ctx.closePath();
     ctx.fill();
 
+    ctx.strokeStyle = "rgba(14, 165, 233, 0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(15, 0);
+    ctx.lineTo(-6, -8);
+    ctx.lineTo(-18, 0);
+    ctx.lineTo(-6, 8);
+    ctx.closePath();
+    ctx.stroke();
+
     if (renderState.thrusting) {
-      const flicker = 11 + Math.sin(renderState.time * 40) * 2;
+      const flicker = 14 + Math.sin(renderState.time * 40) * 3;
       ctx.fillStyle = "#fb7185";
       ctx.beginPath();
-      ctx.moveTo(-24, 0);
-      ctx.lineTo(-24 - flicker, -7);
-      ctx.lineTo(-34, 0);
-      ctx.lineTo(-24 - flicker, 7);
+      ctx.moveTo(-25, 0);
+      ctx.lineTo(-25 - flicker, -8);
+      ctx.lineTo(-38, 0);
+      ctx.lineTo(-25 - flicker, 8);
       ctx.closePath();
       ctx.fill();
 
       ctx.fillStyle = "#fbbf24";
       ctx.beginPath();
       ctx.moveTo(-24, 0);
-      ctx.lineTo(-24 - flicker * 0.65, -3);
-      ctx.lineTo(-30, 0);
-      ctx.lineTo(-24 - flicker * 0.65, 3);
+      ctx.lineTo(-24 - flicker * 0.68, -4);
+      ctx.lineTo(-32, 0);
+      ctx.lineTo(-24 - flicker * 0.68, 4);
       ctx.closePath();
       ctx.fill();
     }
@@ -197,4 +220,15 @@ export class Player {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function lerpAngle(current, target, alpha) {
+  let delta = target - current;
+  while (delta > Math.PI) {
+    delta -= Math.PI * 2;
+  }
+  while (delta < -Math.PI) {
+    delta += Math.PI * 2;
+  }
+  return current + delta * alpha;
 }
