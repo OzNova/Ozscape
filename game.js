@@ -807,51 +807,94 @@ export class Game {
   drawHud() {
     const fuelRatio = this.run.fuel / this.getDerivedStats().maxFuel;
     const progressRatio = clamp(this.run.routeProgress / this.segment.length, 0, 1);
+    const fuelPercent = Math.round(fuelRatio * 100);
 
     this.ctx.fillStyle = "rgba(6, 18, 34, 0.82)";
-    this.ctx.fillRect(18, 18, 520, 154);
-    this.ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
-    this.ctx.strokeRect(18, 18, 520, 154);
+    this.ctx.fillRect(18, 18, 560, 166);
+    this.ctx.strokeStyle = "rgba(56, 189, 248, 0.48)";
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(18, 18, 560, 166);
 
-    this.drawMeter("Fuel", fuelRatio, 38, "#38bdf8");
-    this.drawMeter("Route", progressRatio, 72, "#22c55e");
+    this.drawMeter("Fuel", fuelRatio, 42, "#38bdf8", {
+      valueText: `${Math.round(this.run.fuel)} / ${this.getDerivedStats().maxFuel}`,
+      alertThreshold: 0.25,
+      criticalThreshold: 0.1
+    });
+    this.drawMeter("Route", progressRatio, 86, "#22c55e", {
+      valueText: `${Math.round(progressRatio * 100)}%`
+    });
 
     this.ctx.fillStyle = "#f8fafc";
-    this.ctx.font = "15px Trebuchet MS";
+    this.ctx.font = "16px Trebuchet MS";
     this.ctx.textAlign = "left";
-    this.ctx.fillText(`Credits: ${this.save.credits}`, 32, 106);
-    this.ctx.fillText(`Route: ${this.segment.name}`, 180, 106);
+    this.ctx.fillText(`Credits: ${this.save.credits}`, 32, 122);
+    this.ctx.fillText(`Route: ${this.segment.name}`, 210, 122);
     this.ctx.fillText(
       `Objective: ${this.run.stationCompleted ? "Reach destination gate" : "Dock at refuel station"}`,
       32,
-      132
+      148
     );
 
     if (!this.run.stationCompleted) {
       this.ctx.fillText(
         `Dock lock: ${Math.round(this.run.dockingProgress / this.segment.dockingDuration * 100)}%`,
         32,
-        156
+        174
       );
     } else if (this.run.wormholeUsed) {
-      this.ctx.fillText("Wormhole taken. Reward bonus secured.", 32, 156);
+      this.ctx.fillText("Wormhole taken. Reward bonus secured.", 32, 174);
     } else {
-      this.ctx.fillText("Station refuel complete. Wormhole remains optional.", 32, 156);
+      this.ctx.fillText("Station refuel complete. Wormhole remains optional.", 32, 174);
+    }
+
+    if (fuelRatio <= 0.25) {
+      this.ctx.fillStyle = fuelRatio <= 0.1 ? "#fecaca" : "#fde68a";
+      this.ctx.font = "bold 15px Trebuchet MS";
+      this.ctx.fillText(
+        fuelRatio <= 0.1 ? `Fuel critical: ${fuelPercent}%` : `Low fuel: ${fuelPercent}%`,
+        390,
+        174
+      );
     }
   }
 
-  drawMeter(label, ratio, y, color) {
+  drawMeter(label, ratio, y, color, options = {}) {
+    const { valueText = "", alertThreshold = -1, criticalThreshold = -1 } = options;
+    const safeRatio = clamp(ratio, 0, 1);
+    const isCritical = criticalThreshold >= 0 && safeRatio <= criticalThreshold;
+    const isAlert = alertThreshold >= 0 && safeRatio <= alertThreshold;
+    const fillColor = isCritical ? "#ef4444" : isAlert ? "#f59e0b" : color;
+
     this.ctx.fillStyle = "#f8fafc";
-    this.ctx.font = "15px Trebuchet MS";
+    this.ctx.font = "bold 16px Trebuchet MS";
     this.ctx.textAlign = "left";
     this.ctx.fillText(label, 32, y);
 
-    this.ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
-    this.ctx.fillRect(118, y - 11, 390, 12);
-    this.ctx.fillStyle = color;
-    this.ctx.fillRect(118, y - 11, 390 * ratio, 12);
-    this.ctx.strokeStyle = "rgba(226, 232, 240, 0.2)";
-    this.ctx.strokeRect(118, y - 11, 390, 12);
+    if (valueText) {
+      this.ctx.fillStyle = isCritical ? "#fecaca" : "#cbd5e1";
+      this.ctx.font = "15px Trebuchet MS";
+      this.ctx.textAlign = "right";
+      this.ctx.fillText(valueText, 542, y);
+    }
+
+    this.ctx.fillStyle = "rgba(15, 23, 42, 0.98)";
+    this.ctx.fillRect(118, y - 15, 404, 18);
+    this.ctx.fillStyle = fillColor;
+    this.ctx.fillRect(118, y - 15, 404 * safeRatio, 18);
+    this.ctx.strokeStyle = isCritical
+      ? "rgba(248, 113, 113, 0.9)"
+      : isAlert
+        ? "rgba(251, 191, 36, 0.8)"
+        : "rgba(226, 232, 240, 0.28)";
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(118, y - 15, 404, 18);
+
+    if (isAlert) {
+      this.ctx.strokeStyle = isCritical ? "rgba(239, 68, 68, 0.38)" : "rgba(245, 158, 11, 0.34)";
+      this.ctx.strokeRect(114, y - 19, 412, 26);
+    }
+
+    this.ctx.textAlign = "left";
   }
 
   drawCenterCard(title, copy) {
@@ -1010,6 +1053,9 @@ export class Game {
     }
 
     if (this.state === "segment") {
+      const fuelRatio = this.run.fuel / this.getDerivedStats().maxFuel;
+      const fuelState = fuelRatio <= 0.1 ? "Critical" : fuelRatio <= 0.25 ? "Low" : "Stable";
+
       titleEl.textContent = this.segment.name;
       copyEl.textContent = "Keep the freighter clean, manage fuel, and decide whether the wormhole shortcut is worth the risk.";
       statusLabel.textContent = this.run.stationCompleted
@@ -1020,6 +1066,7 @@ export class Game {
         : `Objective: Dock at ${this.segment.stationLabel}.`;
       this.addDetail(detailsEl, `Route progress: ${Math.round(clamp(this.run.routeProgress / this.segment.length, 0, 1) * 100)}%`);
       this.addDetail(detailsEl, `Fuel remaining: ${Math.round(this.run.fuel)} / ${this.getDerivedStats().maxFuel}`);
+      this.addDetail(detailsEl, `Fuel status: ${fuelState}`);
       this.addDetail(detailsEl, `Hazard exposure: ${this.run.hazardExposure.toFixed(1)}s`);
       this.addDetail(detailsEl, `Wormhole: ${this.run.wormholeUsed ? "Used" : "Available after station"}`);
       startButton.textContent = "In Flight";
