@@ -119,41 +119,65 @@ export class Player {
     ctx.arc(0, 0, 34, 0, Math.PI * 2);
     ctx.fill();
 
+    ctx.fillStyle = "rgba(103, 232, 249, 0.2)";
+    ctx.beginPath();
+    ctx.moveTo(30, 0);
+    ctx.lineTo(-20, -18);
+    ctx.lineTo(-28, 0);
+    ctx.lineTo(-20, 18);
+    ctx.closePath();
+    ctx.fill();
+
     ctx.fillStyle = "#e2e8f0";
     ctx.beginPath();
     ctx.moveTo(26, 0);
-    ctx.lineTo(-18, -14);
-    ctx.lineTo(-6, 0);
-    ctx.lineTo(-18, 14);
+    ctx.lineTo(-16, -14);
+    ctx.lineTo(-10, 0);
+    ctx.lineTo(-16, 14);
     ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = "#67e8f9";
-    ctx.fillRect(-22, -6, 10, 12);
+    ctx.beginPath();
+    ctx.moveTo(8, 0);
+    ctx.lineTo(-6, -5);
+    ctx.lineTo(-9, 0);
+    ctx.lineTo(-6, 5);
+    ctx.closePath();
+    ctx.fill();
 
-    ctx.fillStyle = "#c084fc";
-    ctx.fillRect(-4, -4, 10, 8);
+    ctx.fillStyle = "#94a3b8";
+    ctx.beginPath();
+    ctx.moveTo(-8, -9);
+    ctx.lineTo(-18, -15);
+    ctx.lineTo(-15, -5);
+    ctx.closePath();
+    ctx.fill();
 
-    ctx.fillStyle = "#1e293b";
-    ctx.fillRect(6, -2, 8, 4);
+    ctx.beginPath();
+    ctx.moveTo(-8, 9);
+    ctx.lineTo(-18, 15);
+    ctx.lineTo(-15, 5);
+    ctx.closePath();
+    ctx.fill();
 
     if (renderState.thrusting) {
       const flicker = 11 + Math.sin(renderState.time * 40) * 2;
       ctx.fillStyle = "#fb7185";
       ctx.beginPath();
-      ctx.moveTo(-22, 0);
-      ctx.lineTo(-22 - flicker, -6);
-      ctx.lineTo(-30, 0);
-      ctx.lineTo(-22 - flicker, 6);
+      ctx.moveTo(-24, 0);
+      ctx.lineTo(-24 - flicker, -7);
+      ctx.lineTo(-34, 0);
+      ctx.lineTo(-24 - flicker, 7);
       ctx.closePath();
       ctx.fill();
 
       ctx.fillStyle = "#fbbf24";
       ctx.beginPath();
-      ctx.moveTo(-22, 0);
-      ctx.lineTo(-22 - flicker * 0.65, -3);
-      ctx.lineTo(-28, 0);
-      ctx.lineTo(-22 - flicker * 0.65, 3);
+      ctx.moveTo(-24, 0);
+      ctx.lineTo(-24 - flicker * 0.65, -3);
+      ctx.lineTo(-30, 0);
+      ctx.lineTo(-24 - flicker * 0.65, 3);
       ctx.closePath();
       ctx.fill();
     }
