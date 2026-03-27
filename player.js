@@ -1,4 +1,100 @@
-export class Player {
+export class PlayerCharacter {
+  constructor(x, y) {
+    this.width = 22;
+    this.height = 26;
+    this.baseSpeed = 178;
+    this.reset({ x, y });
+  }
+
+  reset(spawn) {
+    this.position = { x: spawn.x, y: spawn.y };
+    this.velocity = { x: 0, y: 0 };
+    this.facing = 0;
+    this.walkCycle = 0;
+  }
+
+  update(input, deltaTime, bounds) {
+    const horizontal = (input.d ? 1 : 0) - (input.a ? 1 : 0);
+    const vertical = (input.s ? 1 : 0) - (input.w ? 1 : 0);
+    const intensity = Math.hypot(horizontal, vertical);
+    const moving = intensity > 0;
+
+    if (moving) {
+      const normalizedX = horizontal / intensity;
+      const normalizedY = vertical / intensity;
+      this.velocity.x = normalizedX * this.baseSpeed;
+      this.velocity.y = normalizedY * this.baseSpeed;
+      this.facing = Math.atan2(normalizedY, normalizedX);
+      this.walkCycle += deltaTime * 10;
+    } else {
+      this.velocity.x = 0;
+      this.velocity.y = 0;
+    }
+
+    this.position.x += this.velocity.x * deltaTime;
+    this.position.y += this.velocity.y * deltaTime;
+
+    const minX = 44;
+    const maxX = bounds.width - 44;
+    const minY = 78;
+    const maxY = bounds.height - 56;
+    this.position.x = clamp(this.position.x, minX, maxX);
+    this.position.y = clamp(this.position.y, minY, maxY);
+
+    return {
+      moving,
+      speed: Math.hypot(this.velocity.x, this.velocity.y)
+    };
+  }
+
+  draw(ctx, renderState = {}) {
+    const bob = renderState.moving ? Math.sin(this.walkCycle) * 1.6 : 0;
+
+    ctx.save();
+    ctx.translate(this.position.x, this.position.y + bob);
+
+    ctx.fillStyle = "rgba(56, 189, 248, 0.2)";
+    ctx.beginPath();
+    ctx.ellipse(0, 18, 14, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(-7, -3, 14, 17);
+    ctx.fillStyle = "#38bdf8";
+    ctx.fillRect(-5, -1, 10, 13);
+
+    ctx.fillStyle = "#e2e8f0";
+    ctx.beginPath();
+    ctx.arc(0, -10, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-3, 14);
+    ctx.lineTo(-5, 21 + Math.sin(this.walkCycle) * (renderState.moving ? 2 : 0));
+    ctx.moveTo(3, 14);
+    ctx.lineTo(5, 21 - Math.sin(this.walkCycle) * (renderState.moving ? 2 : 0));
+    ctx.moveTo(-7, 3);
+    ctx.lineTo(-12, 10);
+    ctx.moveTo(7, 3);
+    ctx.lineTo(12, 10);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  getBounds() {
+    return {
+      x: this.position.x - this.width / 2,
+      y: this.position.y - this.height / 2,
+      width: this.width,
+      height: this.height
+    };
+  }
+}
+
+export class ShipPlayer {
   constructor(x, y) {
     this.width = 48;
     this.height = 28;
@@ -217,6 +313,8 @@ export class Player {
     };
   }
 }
+
+export { ShipPlayer as Player };
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));

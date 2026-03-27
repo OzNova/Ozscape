@@ -1,4 +1,4 @@
-import { Player } from "./player.js";
+import { ShipPlayer, PlayerCharacter } from "./player.js";
 import { ObstacleManager } from "./obstacles.js";
 
 const SAVE_KEY = "ozscape-save-v3";
@@ -455,7 +455,8 @@ export class Game {
     this.state = "menu";
     this.segmentIndex = 0;
     this.segment = SEGMENTS[this.segmentIndex];
-    this.player = new Player(190, height / 2);
+    this.player = new ShipPlayer(190, height / 2);
+    this.character = new PlayerCharacter(88, height - 126);
     this.obstacles = new ObstacleManager(width, height);
     this.running = false;
     this.lastTime = 0;
@@ -565,19 +566,14 @@ export class Game {
   startSegment() {
     const stats = this.getDerivedStats();
     const departure = this.segment.departure;
-    this.player.reset(
-      {
-        x: departure.loadingZone.x + departure.loadingZone.width / 2,
-        y: departure.loadingZone.y + departure.loadingZone.height / 2
-      },
-      this.save.upgrades
-    );
     this.obstacles.loadSegment(this.segment);
+    this.character.reset(departure.characterSpawn);
+    this.player.reset(departure.shipSpawn, this.save.upgrades);
     this.run = {
       ...this.createEmptyRun(),
       fuel: safeNumber(stats.maxFuel, 45)
     };
-    this.state = "loading";
+    this.state = "boarding";
     this.running = true;
     this.lastTime = performance.now();
     this.backgroundOffset = 0;
@@ -605,66 +601,59 @@ export class Game {
   }
 
   update(deltaTime) {
-    if (this.state === "loading") {
-      this.updateLoading(deltaTime);
-    } else if (this.state === "departure") {
-      this.updateDeparture(deltaTime);
+    if (this.state === "boarding") {
+      this.updateBoarding(deltaTime);
+    } else if (this.state === "launch") {
+      this.updateLaunch(deltaTime);
     } else if (this.state === "segment") {
       this.updateSegment(deltaTime);
     } else if (this.state === "docking") {
       this.updateDocking(deltaTime);
     } else if (this.state === "wormholeTransit") {
       this.updateWormholeTransit(deltaTime);
+    } else if (this.state === "arrival") {
+      this.updateArrival(deltaTime);
     } else {
       this.running = false;
     }
   }
 
-  updateLoading(deltaTime) {
-    const stats = this.getDerivedStats();
-    const movement = this.player.update(
+  updateBoarding(deltaTime) {
+    const movement = this.character.update(
       this.input,
       deltaTime,
-      { width: this.width, height: this.height },
-      stats
+      { width: this.width, height: this.height }
     );
-    const loading = this.obstacles.getLoadingInfo(this.player);
-    const loadRate = 0.6 + loading.alignment * 0.6 + stats.dockingAssist * 0.16;
-    const unloadRate = 0.8;
+    const cargo = this.obstacles.getCargoCheckpointInfo(this.character);
+    const boarding = this.obstacles.getBoardingInfo(this.character);
 
-    if (loading.inZone && movement.stable) {
-      this.run.loadingProgress = clamp(
-        this.run.loadingProgress + loadRate * deltaTime,
-        0,
-        this.segment.departure.loadingDuration
-      );
+    if (!this.run.cargoSecured && cargo.inZone) {
+      this.run.cargoProgress = clamp(this.run.cargoProgress + deltaTime, 0, 1.2);
+      if (this.run.cargoProgress >= 1.2) {
+        this.run.cargoSecured = true;
+      }
     } else {
-      this.run.loadingProgress = clamp(
-        this.run.loadingProgress - unloadRate * deltaTime,
-        0,
-        this.segment.departure.loadingDuration
-      );
+      this.run.cargoProgress = Math.max(0, this.run.cargoProgress - deltaTime * 0.65);
     }
 
-    this.run.cargoLoaded = Math.floor(
-      this.run.loadingProgress / Math.max(this.segment.departure.loadingDuration, 0.1) * this.segment.departure.cargoCount
-    );
-    this.run.fuel = safeNumber(this.getDerivedStats().maxFuel, 45);
-    this.backgroundOffset += 10 * deltaTime;
-
-    if (this.run.loadingProgress >= this.segment.departure.loadingDuration) {
-      this.run.cargoLoaded = this.segment.departure.cargoCount;
-      this.state = "departure";
+    if (this.run.cargoSecured && boarding.inZone) {
+      this.run.boardingProgress = clamp(this.run.boardingProgress + deltaTime * 1.1, 0, 1.1);
+      if (this.run.boardingProgress >= 1.1) {
+        this.run.cargoLoaded = this.segment.departure.cargoCount;
+        this.state = "launch";
+      }
+    } else if (this.run.cargoSecured) {
+      this.run.boardingProgress = Math.max(0, this.run.boardingProgress - deltaTime * 0.7);
     }
 
     this.renderPanel();
   }
 
-  updateDeparture(deltaTime) {
+  updateLaunch(deltaTime) {
     const stats = this.getDerivedStats();
     const maxFuel = safeNumber(stats.maxFuel, 45);
     const departure = this.segment.departure;
-    const departureForce = this.obstacles.getDepartureForce(this.player, this.run.departureProgress);
+    const departureForce = this.obstacles.getDepartureForce(this.player, this.run.launchProgress);
     const movement = this.player.update(
       this.input,
       deltaTime,
@@ -690,7 +679,7 @@ export class Game {
       0,
       1
     );
-    this.run.departureProgress = clamp(Math.max(this.run.departureProgress, horizontalRatio * 0.65 + verticalRatio * 0.35), 0, 1);
+    this.run.launchProgress = clamp(Math.max(this.run.launchProgress, horizontalRatio * 0.65 + verticalRatio * 0.35), 0, 1);
 
     if (
       this.player.position.x >= departure.clearX ||
@@ -707,6 +696,31 @@ export class Game {
       return;
     }
 
+    this.renderPanel();
+  }
+
+  updateArrival(deltaTime) {
+    const movement = this.character.update(
+      this.input,
+      deltaTime,
+      { width: this.width, height: this.height }
+    );
+    const arrival = this.obstacles.getArrivalInfo(this.character);
+
+    if (arrival.inZone) {
+      this.run.arrivalProgress = clamp(this.run.arrivalProgress + deltaTime, 0, 1.1);
+      if (this.run.arrivalProgress >= 1.1) {
+        this.state = "results";
+        this.running = false;
+        this.renderPanel();
+        this.draw();
+        return;
+      }
+    } else {
+      this.run.arrivalProgress = Math.max(0, this.run.arrivalProgress - deltaTime * 0.5);
+    }
+
+    this.backgroundOffset += movement.moving ? 10 * deltaTime : 4 * deltaTime;
     this.renderPanel();
   }
 
@@ -910,10 +924,10 @@ export class Game {
     );
     this.persistSave();
 
-    this.state = "results";
-    this.running = false;
+    this.character.reset(this.segment.departure.arrivalSpawn);
+    this.state = "arrival";
+    this.running = true;
     this.renderPanel();
-    this.draw();
   }
 
   failSegment(reason) {
@@ -959,11 +973,12 @@ export class Game {
     this.ctx.clearRect(0, 0, this.width, this.height);
 
     if (
-      this.state === "loading" ||
-      this.state === "departure" ||
+      this.state === "boarding" ||
+      this.state === "launch" ||
       this.state === "segment" ||
       this.state === "docking" ||
-      this.state === "wormholeTransit"
+      this.state === "wormholeTransit" ||
+      this.state === "arrival"
     ) {
       this.drawSegmentScene();
       return;
@@ -993,14 +1008,37 @@ export class Game {
       return;
     }
 
-    if (this.state === "loading" || this.state === "departure") {
+    if (this.state === "boarding") {
+      this.obstacles.drawBoardingScene(this.ctx, this.run, this.character, this.player, this.time);
+      this.player.draw(this.ctx, {
+        thrusting: false,
+        highlight: false,
+        time: this.time
+      });
+      this.character.draw(this.ctx, {
+        moving: Math.hypot(this.character.velocity.x, this.character.velocity.y) > 0
+      });
+      this.drawBoardingHud();
+      return;
+    }
+
+    if (this.state === "launch") {
       this.obstacles.drawDepartureScene(this.ctx, this.run, this.player, this.time);
       this.player.draw(this.ctx, {
         thrusting: this.player.getTelemetry().thrusting,
         highlight: true,
         time: this.time
       });
-      this.drawDepartureHud();
+      this.drawLaunchHud();
+      return;
+    }
+
+    if (this.state === "arrival") {
+      this.obstacles.drawArrivalScene(this.ctx, this.run, this.character, this.time);
+      this.character.draw(this.ctx, {
+        moving: Math.hypot(this.character.velocity.x, this.character.velocity.y) > 0
+      });
+      this.drawArrivalHud();
       return;
     }
 
@@ -1019,15 +1057,29 @@ export class Game {
     }
   }
 
-  drawDepartureHud() {
+  drawBoardingHud() {
+    this.ctx.fillStyle = "rgba(4, 13, 26, 0.82)";
+    this.ctx.fillRect(26, 22, 640, 154);
+    this.ctx.strokeStyle = "rgba(125, 211, 252, 0.4)";
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(26, 22, 640, 154);
+
+    this.drawMeter("Cargo Check", clamp(this.run.cargoProgress / 1.2, 0, 1), 46, "#f59e0b", {
+      valueText: this.run.cargoSecured ? "Secured" : "Pending"
+    });
+    this.drawMeter("Boarding", clamp(this.run.boardingProgress / 1.1, 0, 1), 90, "#22c55e", {
+      valueText: this.run.cargoSecured ? "Ready to board" : "Cargo first"
+    });
+
+    this.ctx.fillStyle = "#f8fafc";
+    this.ctx.font = "16px Trebuchet MS";
+    this.ctx.fillText("Walk to the cargo checkpoint, secure the shipment, then board the parked freighter.", 40, 142);
+  }
+
+  drawLaunchHud() {
     const maxFuel = safeNumber(this.getDerivedStats().maxFuel, 45);
     const fuel = safeNumber(this.run.fuel, 0);
     const fuelRatio = clamp(fuel / maxFuel, 0, 1);
-    const loadingRatio = clamp(
-      this.run.loadingProgress / Math.max(this.segment.departure.loadingDuration, 0.1),
-      0,
-      1
-    );
 
     this.ctx.fillStyle = "rgba(4, 13, 26, 0.82)";
     this.ctx.fillRect(26, 22, 600, 154);
@@ -1038,27 +1090,36 @@ export class Game {
     this.drawMeter("Fuel", fuelRatio, 46, "#38bdf8", {
       valueText: `${Math.round(fuel)} / ${Math.round(maxFuel)}`
     });
-    this.drawMeter(
-      this.state === "loading" ? "Cargo" : "Departure",
-      this.state === "loading" ? loadingRatio : this.run.departureProgress,
-      90,
-      this.state === "loading" ? "#f59e0b" : "#22c55e",
-      {
-        valueText: this.state === "loading"
-          ? `${this.run.cargoLoaded} / ${this.segment.departure.cargoCount}`
-          : `${Math.round(this.run.departureProgress * 100)}%`
-      }
-    );
+    this.drawMeter("Launch", this.run.launchProgress, 90, "#22c55e", {
+      valueText: `${Math.round(this.run.launchProgress * 100)}%`
+    });
 
     this.ctx.fillStyle = "#f8fafc";
     this.ctx.font = "16px Trebuchet MS";
     this.ctx.fillText(
-      this.state === "loading"
-        ? "Hold inside the loading cradle while the containers are transferred."
-        : "Lift clear of the port, stay in the lane, then break into open space.",
+      "Lift off from the pad, stay in the departure lane, then break into open space.",
       40,
       142
     );
+  }
+
+  drawArrivalHud() {
+    this.ctx.fillStyle = "rgba(4, 13, 26, 0.82)";
+    this.ctx.fillRect(26, 22, 620, 154);
+    this.ctx.strokeStyle = "rgba(52, 211, 153, 0.42)";
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(26, 22, 620, 154);
+
+    this.drawMeter("Arrival", this.run.arrivalProgress, 46, "#22c55e", {
+      valueText: `${Math.round(this.run.arrivalProgress * 100)}%`
+    });
+    this.drawMeter("Credits", clamp(this.summary.total / Math.max(this.summary.total, 1), 0, 1), 90, "#38bdf8", {
+      valueText: `${this.summary.total} cr`
+    });
+
+    this.ctx.fillStyle = "#f8fafc";
+    this.ctx.font = "16px Trebuchet MS";
+    this.ctx.fillText("Walk your courier to the delivery office to complete the drop and finalize payment.", 40, 142);
   }
 
   drawBackdrop() {
@@ -1399,43 +1460,46 @@ export class Game {
       titleEl.textContent = this.segment.name;
       copyEl.textContent = `${this.segment.briefing} Departure begins from ${this.segment.departure.portLabel} on ${this.segment.departure.planetLabel}.`;
       statusLabel.textContent = "Mission packet received.";
-      objectiveLabel.textContent = `Objective: Load cargo, launch from ${this.segment.departure.portLabel}, dock at ${this.segment.stationLabel}, then reach ${this.segment.destinationLabel}.`;
+      objectiveLabel.textContent = `Objective: Walk the courier through cargo check, board the ship, dock at ${this.segment.stationLabel}, then reach ${this.segment.destinationLabel}.`;
       this.addDetail(detailsEl, `Planetary landmarks: ${this.segment.planets.length}`);
       this.addDetail(detailsEl, `Soft hazards: ${this.segment.gravityZones.length + this.segment.ionZones.length}`);
       this.addDetail(detailsEl, `Shortcut: ${this.segment.wormhole ? "Optional wormhole branch" : "None"}`);
       this.addDetail(detailsEl, "Warning: any solid collision immediately fails the route.");
       this.addDetail(detailsEl, `Departure port: ${this.segment.departure.portLabel}`);
-      startButton.textContent = "Begin Loading";
+      startButton.textContent = "Start Boarding";
       startButton.disabled = false;
       restartButton.textContent = "Back";
       restartButton.disabled = false;
       return;
     }
 
-    if (this.state === "loading") {
+    if (this.state === "boarding") {
       titleEl.textContent = this.segment.departure.portLabel;
       copyEl.textContent =
-        "Your freighter is on the pad. Hold position inside the loading cradle while the ground crew locks the containers into the cargo spine.";
-      statusLabel.textContent = "Planetary cargo transfer in progress.";
-      objectiveLabel.textContent = "Objective: Stay stable inside the loading zone until cargo is secured.";
+        "Start on foot in the cargo yard. Walk to the cargo checkpoint, secure the package manifest, then move to the boarding ramp to enter your ship.";
+      statusLabel.textContent = this.run.cargoSecured ? "Cargo secured. Proceed to the boarding ramp." : "Courier on the ground. Cargo has not been signed off.";
+      objectiveLabel.textContent = this.run.cargoSecured
+        ? "Objective: Reach the boarding ramp and enter the freighter."
+        : "Objective: Walk to the cargo checkpoint first.";
       this.addDetail(detailsEl, `World: ${this.segment.departure.planetLabel}`);
-      this.addDetail(detailsEl, `Cargo loaded: ${this.run.cargoLoaded} / ${this.segment.departure.cargoCount}`);
-      this.addDetail(detailsEl, `Loading progress: ${Math.round(clamp(this.run.loadingProgress / this.segment.departure.loadingDuration, 0, 1) * 100)}%`);
-      this.addDetail(detailsEl, `Fuel reserves: ${Math.round(this.run.fuel)} / ${Math.round(this.getDerivedStats().maxFuel)}`);
-      startButton.textContent = "Loading";
+      this.addDetail(detailsEl, `Cargo manifest: ${this.run.cargoSecured ? "Signed and secured" : "Pending cargo check"}`);
+      this.addDetail(detailsEl, `Cargo check progress: ${Math.round(clamp(this.run.cargoProgress / 1.2, 0, 1) * 100)}%`);
+      this.addDetail(detailsEl, `Boarding progress: ${Math.round(clamp(this.run.boardingProgress / 1.1, 0, 1) * 100)}%`);
+      this.addDetail(detailsEl, `Package count: ${this.segment.departure.cargoCount}`);
+      startButton.textContent = "Boarding";
       startButton.disabled = true;
-      restartButton.textContent = "Loading";
+      restartButton.textContent = "Boarding";
       restartButton.disabled = true;
       return;
     }
 
-    if (this.state === "departure") {
-      titleEl.textContent = "Departure Corridor";
+    if (this.state === "launch") {
+      titleEl.textContent = "Launch Corridor";
       copyEl.textContent =
-        "Containers are secured. Thrust up and forward through the port lane, clear the planetary pull, and merge into the outbound route.";
+        "You are in the pilot seat now. Thrust up and forward through the departure lane, clear the planetary pull, and merge into the outbound route.";
       statusLabel.textContent = "Launch clearance granted.";
       objectiveLabel.textContent = "Objective: Exit the cargo port and reach open space.";
-      this.addDetail(detailsEl, `Departure progress: ${Math.round(this.run.departureProgress * 100)}%`);
+      this.addDetail(detailsEl, `Launch progress: ${Math.round(this.run.launchProgress * 100)}%`);
       this.addDetail(detailsEl, `Cargo status: Locked for transit`);
       this.addDetail(detailsEl, `Fuel reserves: ${Math.round(this.run.fuel)} / ${Math.round(this.getDerivedStats().maxFuel)}`);
       this.addDetail(detailsEl, `Planetary gravity: Active`);
@@ -1468,6 +1532,23 @@ export class Game {
       startButton.textContent = "In Flight";
       startButton.disabled = true;
       restartButton.textContent = "Route Active";
+      restartButton.disabled = true;
+      return;
+    }
+
+    if (this.state === "arrival") {
+      titleEl.textContent = "Arrival Hub";
+      copyEl.textContent =
+        "You made the run. Step out as the courier, cross the destination dock, and file the delivery at the local office to close the contract.";
+      statusLabel.textContent = "Ship landed. Final delivery handoff pending.";
+      objectiveLabel.textContent = "Objective: Walk to the delivery office.";
+      this.addDetail(detailsEl, `Arrival progress: ${Math.round(this.run.arrivalProgress * 100)}%`);
+      this.addDetail(detailsEl, `Contract value: ${this.summary.total} credits`);
+      this.addDetail(detailsEl, `Destination: ${this.segment.destinationLabel}`);
+      this.addDetail(detailsEl, `Wormhole used: ${this.run.wormholeUsed ? "Yes" : "No"}`);
+      startButton.textContent = "Delivering";
+      startButton.disabled = true;
+      restartButton.textContent = "Delivering";
       restartButton.disabled = true;
       return;
     }
@@ -1598,9 +1679,12 @@ export class Game {
     return {
       routeProgress: 0,
       fuel: 0,
-      loadingProgress: 0,
+      cargoProgress: 0,
       cargoLoaded: 0,
-      departureProgress: 0,
+      cargoSecured: false,
+      boardingProgress: 0,
+      launchProgress: 0,
+      arrivalProgress: 0,
       dockingProgress: 0,
       dockingTimer: 0,
       dockingQuality: 1,

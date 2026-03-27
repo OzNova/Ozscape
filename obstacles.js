@@ -66,6 +66,29 @@ export class ObstacleManager {
     this.planets = segmentConfig.planets ?? [];
     this.wormhole = segmentConfig.wormhole ?? null;
     this.departure = segmentConfig.departure ?? null;
+    if (this.departure) {
+      this.departure.cargoZone = this.departure.cargoZone ?? {
+        x: 120,
+        y: 470,
+        width: 112,
+        height: 96
+      };
+      this.departure.boardingZone = this.departure.boardingZone ?? {
+        x: this.departure.pad.x + 24,
+        y: this.departure.pad.y - 16,
+        width: 104,
+        height: 78
+      };
+      this.departure.characterSpawn = this.departure.characterSpawn ?? { x: 88, y: 594 };
+      this.departure.shipSpawn = this.departure.shipSpawn ?? { x: this.departure.pad.x + 182, y: this.departure.pad.y + 42 };
+      this.departure.arrivalZone = this.departure.arrivalZone ?? {
+        x: this.width - 200,
+        y: 452,
+        width: 100,
+        height: 132
+      };
+      this.departure.arrivalSpawn = this.departure.arrivalSpawn ?? { x: 140, y: 572 };
+    }
   }
 
   reset() {
@@ -251,12 +274,131 @@ export class ObstacleManager {
     ctx.fillText(this.departure.planetLabel, 44, 58);
   }
 
+  drawBoardingScene(ctx, state, character, ship, time) {
+    if (!this.departure) {
+      return;
+    }
+
+    this.drawDepartureScene(ctx, state, ship, time);
+
+    ctx.fillStyle = "rgba(8, 15, 30, 0.94)";
+    ctx.fillRect(
+      this.departure.cargoZone.x,
+      this.departure.cargoZone.y,
+      this.departure.cargoZone.width,
+      this.departure.cargoZone.height
+    );
+    ctx.strokeStyle = state.cargoSecured ? "rgba(34, 197, 94, 0.72)" : "rgba(250, 204, 21, 0.72)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(
+      this.departure.cargoZone.x,
+      this.departure.cargoZone.y,
+      this.departure.cargoZone.width,
+      this.departure.cargoZone.height
+    );
+
+    ctx.fillStyle = "rgba(15, 23, 42, 0.84)";
+    ctx.fillRect(
+      this.departure.boardingZone.x,
+      this.departure.boardingZone.y,
+      this.departure.boardingZone.width,
+      this.departure.boardingZone.height
+    );
+    ctx.strokeStyle = state.cargoSecured ? "rgba(34, 197, 94, 0.72)" : "rgba(103, 232, 249, 0.72)";
+    ctx.strokeRect(
+      this.departure.boardingZone.x,
+      this.departure.boardingZone.y,
+      this.departure.boardingZone.width,
+      this.departure.boardingZone.height
+    );
+
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "18px Trebuchet MS";
+    ctx.textAlign = "left";
+    ctx.fillText(state.cargoSecured ? "Cargo Registered" : "Cargo Checkpoint", this.departure.cargoZone.x, this.departure.cargoZone.y - 16);
+    ctx.fillText(state.cargoSecured ? "Board Ship" : "Boarding Ramp", this.departure.boardingZone.x, this.departure.boardingZone.y - 16);
+  }
+
+  drawArrivalScene(ctx, state, character, time) {
+    if (!this.departure) {
+      return;
+    }
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, this.height);
+    gradient.addColorStop(0, "#040816");
+    gradient.addColorStop(0.52, "#0c1a33");
+    gradient.addColorStop(1, "#111827");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, this.width, this.height);
+
+    ctx.fillStyle = "rgba(226, 232, 240, 0.76)";
+    for (let index = 0; index < 70; index += 1) {
+      ctx.fillRect((index * 181) % this.width, (index * 97) % 260, index % 5 === 0 ? 3 : 2, index % 5 === 0 ? 3 : 2);
+    }
+
+    ctx.fillStyle = "rgba(15, 23, 42, 0.94)";
+    ctx.fillRect(0, 500, this.width, 220);
+    ctx.fillStyle = "rgba(30, 41, 59, 0.8)";
+    ctx.fillRect(0, 462, this.width, 40);
+
+    ctx.fillStyle = "rgba(56, 189, 248, 0.18)";
+    ctx.fillRect(220, 430, 420, 148);
+    ctx.strokeStyle = "rgba(125, 211, 252, 0.4)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(220, 430, 420, 148);
+
+    ctx.fillStyle = "rgba(16, 185, 129, 0.16)";
+    ctx.fillRect(
+      this.departure.arrivalZone.x,
+      this.departure.arrivalZone.y,
+      this.departure.arrivalZone.width,
+      this.departure.arrivalZone.height
+    );
+    ctx.strokeStyle = "rgba(52, 211, 153, 0.7)";
+    ctx.strokeRect(
+      this.departure.arrivalZone.x,
+      this.departure.arrivalZone.y,
+      this.departure.arrivalZone.width,
+      this.departure.arrivalZone.height
+    );
+
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "18px Trebuchet MS";
+    ctx.fillText("Destination Hub", 236, 420);
+    ctx.fillText("Delivery Office", this.departure.arrivalZone.x - 8, this.departure.arrivalZone.y - 18);
+
+    this.drawDepartureLights(ctx, time);
+  }
+
+  getCargoCheckpointInfo(character) {
+    if (!this.departure) {
+      return { inZone: false };
+    }
+    return this.getZoneInfo(character, this.departure.cargoZone);
+  }
+
+  getBoardingInfo(character) {
+    if (!this.departure) {
+      return { inZone: false };
+    }
+    return this.getZoneInfo(character, this.departure.boardingZone);
+  }
+
+  getArrivalInfo(character) {
+    if (!this.departure) {
+      return { inZone: false };
+    }
+    return this.getZoneInfo(character, this.departure.arrivalZone);
+  }
+
   drawCargoContainers(ctx, state, player) {
     if (!this.departure) {
       return;
     }
 
-    const loadedCount = Math.floor(state.loadingProgress / Math.max(this.departure.loadingDuration, 0.1) * this.departure.cargoCount);
+    const loadedCount = state.cargoSecured
+      ? this.departure.cargoCount
+      : Math.floor(state.cargoProgress / 1.2 * this.departure.cargoCount);
     for (let index = 0; index < this.departure.cargoCount; index += 1) {
       const container = this.departure.containers[index];
       let x = container.x;
@@ -266,9 +408,9 @@ export class ObstacleManager {
         const loadedOffset = index * 10;
         x = player.position.x - 24 - loadedOffset;
         y = player.position.y - 16 + index * 12;
-      } else if (state.loadingProgress > index / this.departure.cargoCount) {
+      } else if (state.cargoProgress > index / this.departure.cargoCount) {
         const segmentProgress = clamp(
-          (state.loadingProgress - index / this.departure.cargoCount) * this.departure.cargoCount,
+          (state.cargoProgress - index / this.departure.cargoCount) * this.departure.cargoCount,
           0,
           1
         );
@@ -284,6 +426,17 @@ export class ObstacleManager {
       ctx.fillStyle = "rgba(148, 163, 184, 0.45)";
       ctx.fillRect(x + 3, y + 3, container.width - 6, 4);
     }
+  }
+
+  getZoneInfo(entity, zone) {
+    const bounds = entity.getBounds();
+    const overlap = !(
+      bounds.x + bounds.width < zone.x ||
+      bounds.x > zone.x + zone.width ||
+      bounds.y + bounds.height < zone.y ||
+      bounds.y > zone.y + zone.height
+    );
+    return { inZone: overlap, zone };
   }
 
   drawDepartureLights(ctx, time) {
