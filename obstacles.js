@@ -1,844 +1,618 @@
-const ANCHOR_X = 190;
-
-const circleRectCollision = (circleX, circleY, radius, rect) => {
-  const nearestX = Math.max(rect.x, Math.min(circleX, rect.x + rect.width));
-  const nearestY = Math.max(rect.y, Math.min(circleY, rect.y + rect.height));
-  const dx = circleX - nearestX;
-  const dy = circleY - nearestY;
-  return dx * dx + dy * dy < radius * radius;
-};
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export class ObstacleManager {
-  constructor(width, height) {
-    this.width = width;
-    this.height = height;
+  constructor(THREE, scene) {
+    this.THREE = THREE;
+    this.scene = scene;
     this.segment = null;
+    this.segmentWorld = null;
+    this.root = new THREE.Group();
+    this.departureGroup = new THREE.Group();
+    this.flightGroup = new THREE.Group();
+    this.arrivalGroup = new THREE.Group();
+    this.root.add(this.departureGroup, this.flightGroup, this.arrivalGroup);
+    this.scene.add(this.root);
+
+    this.routeScale = 0.2;
+    this.depthScale = 0.18;
+    this.heightScale = 0.12;
+
     this.objects = [];
     this.gravityZones = [];
     this.ionZones = [];
+    this.planets = [];
     this.station = null;
     this.gate = null;
-    this.planets = [];
     this.wormhole = null;
-    this.departure = null;
+    this.starfield = null;
+  }
+
+  clearGroup(group) {
+    while (group.children.length > 0) {
+      const child = group.children[0];
+      group.remove(child);
+      if (child.geometry) {
+        child.geometry.dispose?.();
+      }
+      if (Array.isArray(child.material)) {
+        child.material.forEach((material) => material.dispose?.());
+      } else {
+        child.material?.dispose?.();
+      }
+    }
   }
 
   loadSegment(segmentConfig) {
     this.segment = segmentConfig;
     this.objects = [];
+    this.gravityZones = [];
+    this.ionZones = [];
+    this.planets = [];
+    this.station = null;
+    this.gate = null;
+    this.wormhole = null;
 
-    const seededObjects = [];
-    segmentConfig.debrisFields.forEach((field) => {
+    this.clearGroup(this.departureGroup);
+    this.clearGroup(this.flightGroup);
+    this.clearGroup(this.arrivalGroup);
+
+    this.segmentWorld = this.createSegmentWorld(segmentConfig);
+    this.createDepartureWorld();
+    this.createFlightWorld();
+    this.createArrivalWorld();
+    this.setMode("preview");
+  }
+
+  createSegmentWorld(segment) {
+    const departure = {
+      portLabel: segment.departure.portLabel,
+      planetLabel: segment.departure.planetLabel,
+      shipSpawn: new this.THREE.Vector3(26, 2.8, -4),
+      characterSpawn: new this.THREE.Vector3(-30, 1.4, 18),
+      cargoZone: {
+        minX: -44,
+        maxX: -20,
+        minZ: 6,
+        maxZ: 28
+      },
+      boardingZone: {
+        minX: 8,
+        maxX: 26,
+        minZ: -12,
+        maxZ: 4
+      },
+      departureLane: {
+        startX: 24,
+        clearX: 120,
+        minZ: -10,
+        maxZ: 10,
+        targetY: 16
+      },
+      gravity: {
+        x: 14,
+        y: 7,
+        z: 0
+      }
+    };
+
+    const routeLength = segment.length * this.routeScale;
+    const stationX = segment.station.worldX * this.routeScale;
+    const gateX = segment.gate.worldX * this.routeScale;
+    const wormhole = segment.wormhole
+      ? {
+          x: segment.wormhole.worldX * this.routeScale,
+          z: this.toRouteZ(segment.wormhole.worldY),
+          radius: segment.wormhole.radius * 0.18,
+          captureDepth: segment.wormhole.captureWidth * 0.12,
+          captureHeight: segment.wormhole.captureHeight * 0.06,
+          exitProgress: segment.wormhole.exitProgress * this.routeScale,
+          fuelBonus: segment.wormhole.fuelBonus,
+          rewardBonus: segment.wormhole.rewardBonus,
+          turbulenceDuration: segment.wormhole.turbulenceDuration
+        }
+      : null;
+
+    return {
+      departure,
+      routeLength,
+      station: {
+        x: stationX,
+        z: this.toRouteZ(segment.station.worldY),
+        bodyRadius: segment.station.bodyRadius * 0.16,
+        zoneDepth: segment.station.zoneWidth * 0.12,
+        zoneHeight: segment.station.zoneHeight * 0.08
+      },
+      gate: {
+        x: gateX,
+        z: this.toRouteZ(segment.gate.worldY),
+        width: segment.gate.width * 0.15,
+        height: segment.gate.height * 0.08
+      },
+      wormhole,
+      arrival: {
+        characterSpawn: new this.THREE.Vector3(-20, 1.4, 10),
+        shipSpawn: new this.THREE.Vector3(14, 2.8, -12),
+        deliveryZone: {
+          minX: 22,
+          maxX: 40,
+          minZ: -2,
+          maxZ: 12
+        }
+      }
+    };
+  }
+
+  createDepartureWorld() {
+    const THREE = this.THREE;
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(120, 64),
+      new THREE.MeshStandardMaterial({ color: 0x111b2d, roughness: 1, metalness: 0.05 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    this.departureGroup.add(ground);
+
+    const horizon = new THREE.Mesh(
+      new THREE.SphereGeometry(120, 48, 48),
+      new THREE.MeshStandardMaterial({ color: 0x2455d6, emissive: 0x163a8f, emissiveIntensity: 0.6 })
+    );
+    horizon.position.set(140, 80, -180);
+    this.departureGroup.add(horizon);
+
+    const pad = new THREE.Mesh(
+      new THREE.BoxGeometry(34, 1.2, 20),
+      new THREE.MeshStandardMaterial({ color: 0x1f2937, metalness: 0.2, roughness: 0.8 })
+    );
+    pad.position.set(12, 0.6, -4);
+    pad.receiveShadow = true;
+    this.departureGroup.add(pad);
+
+    const lane = new THREE.Mesh(
+      new THREE.BoxGeometry(120, 0.05, 24),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.12 })
+    );
+    lane.position.set(70, 0.08, 0);
+    this.departureGroup.add(lane);
+
+    this.addZoneFrame(this.departureGroup, this.segmentWorld.departure.cargoZone, 0xfbbf24, "Cargo Check");
+    this.addZoneFrame(this.departureGroup, this.segmentWorld.departure.boardingZone, 0x67e8f9, "Board Ramp");
+
+    const buildingMaterial = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.95 });
+    [
+      [-62, 12, -26, 14, 24, 18],
+      [-42, 8, -10, 18, 16, 12],
+      [64, 16, 24, 20, 32, 18],
+      [86, 10, -28, 14, 20, 14]
+    ].forEach(([x, y, z, w, h, d]) => {
+      const building = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), buildingMaterial);
+      building.position.set(x, h / 2, z);
+      building.castShadow = true;
+      building.receiveShadow = true;
+      this.departureGroup.add(building);
+    });
+
+    for (let index = 0; index < 6; index += 1) {
+      const crate = new THREE.Mesh(
+        new THREE.BoxGeometry(4, 4, 4),
+        new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.15, roughness: 0.9 })
+      );
+      crate.position.set(-42 + (index % 3) * 5, 2, 10 + Math.floor(index / 3) * 6);
+      crate.castShadow = true;
+      crate.receiveShadow = true;
+      this.departureGroup.add(crate);
+    }
+  }
+
+  createFlightWorld() {
+    const THREE = this.THREE;
+
+    const starGeometry = new THREE.BufferGeometry();
+    const starPositions = [];
+    for (let index = 0; index < 1100; index += 1) {
+      starPositions.push(
+        Math.random() * this.segmentWorld.routeLength + 20,
+        (Math.random() - 0.5) * 300,
+        (Math.random() - 0.5) * 240
+      );
+    }
+    starGeometry.setAttribute("position", new THREE.Float32BufferAttribute(starPositions, 3));
+    this.starfield = new THREE.Points(
+      starGeometry,
+      new THREE.PointsMaterial({ color: 0xe2e8f0, size: 0.9, sizeAttenuation: true })
+    );
+    this.flightGroup.add(this.starfield);
+
+    const routeFloor = new THREE.Mesh(
+      new THREE.PlaneGeometry(this.segmentWorld.routeLength + 240, 220),
+      new THREE.MeshBasicMaterial({ color: 0x0b1424, transparent: true, opacity: 0.2 })
+    );
+    routeFloor.rotation.x = -Math.PI / 2;
+    routeFloor.position.set(this.segmentWorld.routeLength / 2, -5, 0);
+    this.flightGroup.add(routeFloor);
+
+    this.segment.planets.forEach((planet) => {
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(Math.max(8, planet.radius * 0.08), 28, 28),
+        new THREE.MeshStandardMaterial({
+          color: hexFromCss(planet.midColor),
+          emissive: hexFromCss(planet.darkColor),
+          emissiveIntensity: 0.45
+        })
+      );
+      mesh.position.set(planet.worldX * this.routeScale, 50 + planet.radius * 0.05, this.toRouteZ(planet.worldY) * 1.4);
+      this.flightGroup.add(mesh);
+      this.planets.push({ mesh });
+    });
+
+    this.segment.debrisFields.forEach((field) => {
       for (let index = 0; index < field.count; index += 1) {
         const t = field.count === 1 ? 0.5 : index / (field.count - 1);
-        const worldX = field.startX + (field.endX - field.startX) * t + this.offsetNoise(index + field.startX, 160);
-        const worldY = field.top + (field.bottom - field.top) * this.normalizedNoise(index + field.endX, 0.65);
-        seededObjects.push({
-          kind: "debris",
-          worldX,
-          worldY,
-          radius: 16 + this.normalizedNoise(index + field.endX, 0.82) * 18,
-          rotation: this.normalizedNoise(index + 17, 0.24) * Math.PI * 2,
-          spin: -0.6 + this.normalizedNoise(index + 9, 0.51) * 1.2
-        });
+        const x = (field.startX + (field.endX - field.startX) * t + this.offsetNoise(index + field.startX, 160)) * this.routeScale;
+        const z = this.toRouteZ(field.top + (field.bottom - field.top) * this.normalizedNoise(index + field.endX, 0.65));
+        const radius = 2.8 + this.normalizedNoise(index + field.endX, 0.82) * 2.6;
+        const mesh = new THREE.Mesh(
+          new THREE.IcosahedronGeometry(radius, 0),
+          new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 1, metalness: 0.05 })
+        );
+        mesh.position.set(x, (this.normalizedNoise(index + 91, 0.19) - 0.5) * 10, z);
+        mesh.rotation.set(index * 0.2, index * 0.1, index * 0.3);
+        this.flightGroup.add(mesh);
+        this.objects.push({ kind: "debris", mesh, radius, x, z, y: mesh.position.y, spin: 0.25 + index * 0.001 });
       }
     });
 
-    segmentConfig.movingAsteroids.forEach((asteroid, index) => {
-      seededObjects.push({
+    this.segment.movingAsteroids.forEach((asteroid, index) => {
+      const radius = asteroid.radius * 0.16;
+      const mesh = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(radius, 0),
+        new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.95, metalness: 0.04 })
+      );
+      const x = asteroid.worldX * this.routeScale;
+      const z = this.toRouteZ(asteroid.worldY);
+      mesh.position.set(x, 0, z);
+      this.flightGroup.add(mesh);
+      this.objects.push({
         kind: "asteroid",
-        worldX: asteroid.worldX,
-        worldY: asteroid.worldY,
-        radius: asteroid.radius,
-        velocityY: asteroid.velocityY,
-        minY: asteroid.minY,
-        maxY: asteroid.maxY,
-        rotation: index * 0.6,
+        mesh,
+        radius,
+        x,
+        z,
+        y: 0,
+        minZ: this.toRouteZ(asteroid.maxY),
+        maxZ: this.toRouteZ(asteroid.minY),
+        velocityZ: -asteroid.velocityY * 0.02,
         spin: asteroid.spin
       });
     });
 
-    this.objects = seededObjects;
-    this.gravityZones = segmentConfig.gravityZones ?? [];
-    this.ionZones = segmentConfig.ionZones ?? [];
-    this.station = segmentConfig.station;
-    this.gate = segmentConfig.gate;
-    this.planets = segmentConfig.planets ?? [];
-    this.wormhole = segmentConfig.wormhole ?? null;
-    this.departure = segmentConfig.departure ?? null;
-    if (this.departure) {
-      this.departure.cargoZone = this.departure.cargoZone ?? {
-        x: 120,
-        y: 470,
-        width: 112,
-        height: 96
-      };
-      this.departure.boardingZone = this.departure.boardingZone ?? {
-        x: this.departure.pad.x + 24,
-        y: this.departure.pad.y - 16,
-        width: 104,
-        height: 78
-      };
-      this.departure.characterSpawn = this.departure.characterSpawn ?? { x: 88, y: 594 };
-      this.departure.shipSpawn = this.departure.shipSpawn ?? { x: this.departure.pad.x + 182, y: this.departure.pad.y + 42 };
-      this.departure.arrivalZone = this.departure.arrivalZone ?? {
-        x: this.width - 200,
-        y: 452,
-        width: 100,
-        height: 132
-      };
-      this.departure.arrivalSpawn = this.departure.arrivalSpawn ?? { x: 140, y: 572 };
-    }
-  }
-
-  reset() {
-    if (this.segment) {
-      this.loadSegment(this.segment);
-    }
-  }
-
-  update(deltaTime, routeProgress) {
-    this.objects.forEach((object) => {
-      object.rotation += object.spin * deltaTime;
-      if (object.kind === "asteroid") {
-        object.worldY += object.velocityY * deltaTime;
-        if (object.worldY < object.minY || object.worldY > object.maxY) {
-          object.velocityY *= -1;
-          object.worldY = Math.max(object.minY, Math.min(object.maxY, object.worldY));
-        }
-      }
+    this.segment.gravityZones.forEach((zone) => {
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(zone.radius * 0.16, 24, 24),
+        new THREE.MeshBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.08 })
+      );
+      sphere.position.set(zone.worldX * this.routeScale, 0, this.toRouteZ(zone.worldY));
+      this.flightGroup.add(sphere);
+      this.gravityZones.push({
+        x: sphere.position.x,
+        z: sphere.position.z,
+        radius: zone.radius * 0.16,
+        strength: zone.strength * 0.02,
+        fuelPenalty: zone.fuelPenalty,
+        mesh: sphere,
+        label: zone.label
+      });
     });
 
-    const cleanupThreshold = routeProgress - 500;
-    this.objects = this.objects.filter((object) => object.worldX + object.radius > cleanupThreshold);
-  }
-
-  draw(ctx, routeProgress, state) {
-    this.drawPlanets(ctx, routeProgress);
-    this.drawIonZones(ctx, routeProgress);
-    this.drawGravityZones(ctx, routeProgress);
-    this.drawWormhole(ctx, routeProgress, state.wormholeUsed);
-    this.drawStation(ctx, routeProgress, state.stationCompleted);
-    this.drawGate(ctx, routeProgress, state.stationCompleted);
-
-    this.objects.forEach((object) => {
-      const screenX = this.toScreenX(object.worldX, routeProgress);
-      if (screenX < -120 || screenX > this.width + 120) {
-        return;
-      }
-
-      ctx.save();
-      ctx.translate(screenX, object.worldY);
-      ctx.rotate(object.rotation);
-      ctx.fillStyle = object.kind === "asteroid" ? "#cbd5e1" : "#94a3b8";
-      ctx.beginPath();
-      ctx.arc(0, 0, object.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = object.kind === "asteroid" ? "#f1f5f9" : "#cbd5e1";
-      ctx.beginPath();
-      ctx.arc(-object.radius * 0.25, -object.radius * 0.16, object.radius * 0.22, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    });
-  }
-
-  drawDepartureScene(ctx, state, player, time) {
-    if (!this.departure) {
-      return;
-    }
-
-    const skyGradient = ctx.createLinearGradient(0, 0, 0, this.height);
-    skyGradient.addColorStop(0, this.departure.skyTop);
-    skyGradient.addColorStop(0.58, this.departure.skyBottom);
-    skyGradient.addColorStop(1, "#020617");
-    ctx.fillStyle = skyGradient;
-    ctx.fillRect(0, 0, this.width, this.height);
-
-    ctx.fillStyle = "rgba(226, 232, 240, 0.76)";
-    for (let index = 0; index < 95; index += 1) {
-      const x = (index * 173 + time * 4 * ((index % 4) + 1)) % this.width;
-      const y = (index * 97) % (this.departure.horizonY - 140);
-      const size = index % 11 === 0 ? 3 : 2;
-      ctx.fillRect(x, y, size, size);
-    }
-
-    const planetGlow = ctx.createRadialGradient(
-      this.departure.planetX,
-      this.departure.planetY,
-      this.departure.planetRadius * 0.3,
-      this.departure.planetX,
-      this.departure.planetY,
-      this.departure.planetRadius * 1.25
-    );
-    planetGlow.addColorStop(0, this.departure.planetGlow);
-    planetGlow.addColorStop(1, "rgba(15, 23, 42, 0)");
-    ctx.fillStyle = planetGlow;
-    ctx.beginPath();
-    ctx.arc(this.departure.planetX, this.departure.planetY, this.departure.planetRadius * 1.25, 0, Math.PI * 2);
-    ctx.fill();
-
-    const planetGradient = ctx.createRadialGradient(
-      this.departure.planetX - this.departure.planetRadius * 0.28,
-      this.departure.planetY - this.departure.planetRadius * 0.22,
-      this.departure.planetRadius * 0.15,
-      this.departure.planetX,
-      this.departure.planetY,
-      this.departure.planetRadius
-    );
-    planetGradient.addColorStop(0, this.departure.planetLight);
-    planetGradient.addColorStop(0.55, this.departure.planetMid);
-    planetGradient.addColorStop(1, this.departure.planetDark);
-    ctx.fillStyle = planetGradient;
-    ctx.beginPath();
-    ctx.arc(this.departure.planetX, this.departure.planetY, this.departure.planetRadius, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = this.departure.horizonColor;
-    ctx.beginPath();
-    ctx.moveTo(0, this.departure.horizonY);
-    ctx.quadraticCurveTo(this.width * 0.5, this.departure.horizonY - 46, this.width, this.departure.horizonY + 16);
-    ctx.lineTo(this.width, this.height);
-    ctx.lineTo(0, this.height);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = "rgba(30, 41, 59, 0.75)";
-    this.departure.skyline.forEach((building, index) => {
-      const pulse = Math.sin(time * 1.5 + index) * 4;
-      ctx.fillRect(building.x, building.y - pulse, building.width, building.height + pulse);
+    this.segment.ionZones.forEach((zone) => {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(zone.width * 0.18, 14, zone.height * 0.12),
+        new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.12 })
+      );
+      mesh.position.set(zone.worldX * this.routeScale, 0, this.toRouteZ(zone.worldY));
+      this.flightGroup.add(mesh);
+      this.ionZones.push({
+        x: mesh.position.x,
+        z: mesh.position.z,
+        width: zone.width * 0.18,
+        depth: zone.height * 0.12,
+        fuelPenalty: zone.fuelPenalty,
+        controlPenalty: zone.controlPenalty,
+        label: zone.label,
+        mesh
+      });
     });
 
-    ctx.fillStyle = "rgba(56, 189, 248, 0.2)";
-    ctx.fillRect(
-      this.departure.laneStartX,
-      this.departure.laneTop,
-      this.departure.laneEndX - this.departure.laneStartX,
-      this.departure.laneBottom - this.departure.laneTop
-    );
-    ctx.strokeStyle = "rgba(125, 211, 252, 0.35)";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([10, 12]);
-    ctx.strokeRect(
-      this.departure.laneStartX,
-      this.departure.laneTop,
-      this.departure.laneEndX - this.departure.laneStartX,
-      this.departure.laneBottom - this.departure.laneTop
-    );
-    ctx.setLineDash([]);
+    this.station = this.createStationObject();
+    this.flightGroup.add(this.station.mesh);
 
-    ctx.fillStyle = "rgba(15, 23, 42, 0.94)";
-    ctx.fillRect(
-      this.departure.pad.x,
-      this.departure.pad.y,
-      this.departure.pad.width,
-      this.departure.pad.height
-    );
-    ctx.strokeStyle = "rgba(56, 189, 248, 0.42)";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(
-      this.departure.pad.x,
-      this.departure.pad.y,
-      this.departure.pad.width,
-      this.departure.pad.height
-    );
+    this.gate = this.createGateObject();
+    this.flightGroup.add(this.gate.mesh);
 
-    ctx.strokeStyle = "rgba(148, 163, 184, 0.4)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(this.departure.pad.x + 24, this.departure.pad.y + this.departure.pad.height / 2);
-    ctx.lineTo(this.departure.pad.x + this.departure.pad.width - 24, this.departure.pad.y + this.departure.pad.height / 2);
-    ctx.stroke();
+    if (this.segmentWorld.wormhole) {
+      this.wormhole = this.createWormholeObject();
+      this.flightGroup.add(this.wormhole.mesh);
+    }
+  }
 
-    ctx.fillStyle = "rgba(8, 15, 30, 0.94)";
-    ctx.fillRect(
-      this.departure.loadingZone.x,
-      this.departure.loadingZone.y,
-      this.departure.loadingZone.width,
-      this.departure.loadingZone.height
+  createArrivalWorld() {
+    const THREE = this.THREE;
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(120, 64),
+      new THREE.MeshStandardMaterial({ color: 0x101826, roughness: 1, metalness: 0.05 })
     );
-    ctx.strokeStyle = "rgba(103, 232, 249, 0.58)";
-    ctx.strokeRect(
-      this.departure.loadingZone.x,
-      this.departure.loadingZone.y,
-      this.departure.loadingZone.width,
-      this.departure.loadingZone.height
+    ground.rotation.x = -Math.PI / 2;
+    this.arrivalGroup.add(ground);
+
+    const office = new THREE.Mesh(
+      new THREE.BoxGeometry(16, 10, 14),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.92 })
     );
+    office.position.set(30, 5, 4);
+    office.castShadow = true;
+    office.receiveShadow = true;
+    this.arrivalGroup.add(office);
 
-    this.drawCargoContainers(ctx, state, player);
-    this.drawDepartureLights(ctx, time);
+    const hangar = new THREE.Mesh(
+      new THREE.BoxGeometry(28, 5, 18),
+      new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.95 })
+    );
+    hangar.position.set(12, 2.5, -12);
+    hangar.castShadow = true;
+    hangar.receiveShadow = true;
+    this.arrivalGroup.add(hangar);
 
+    this.addZoneFrame(this.arrivalGroup, this.segmentWorld.arrival.deliveryZone, 0x34d399, "Delivery");
+  }
+
+  createStationObject() {
+    const THREE = this.THREE;
+    const group = new THREE.Group();
+    const station = new THREE.Mesh(
+      new THREE.TorusGeometry(this.segmentWorld.station.bodyRadius, 1.5, 12, 32),
+      new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0f766e, emissiveIntensity: 0.35 })
+    );
+    const hub = new THREE.Mesh(
+      new THREE.SphereGeometry(this.segmentWorld.station.bodyRadius * 0.5, 18, 18),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, emissive: 0x0ea5e9, emissiveIntensity: 0.2 })
+    );
+    group.add(station, hub);
+    group.position.set(this.segmentWorld.station.x, 0, this.segmentWorld.station.z);
+    return {
+      ...this.segmentWorld.station,
+      mesh: group
+    };
+  }
+
+  createGateObject() {
+    const THREE = this.THREE;
+    const group = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x7dd3fc, emissive: 0x2563eb, emissiveIntensity: 0.25 });
+    const left = new THREE.Mesh(new THREE.BoxGeometry(2.5, this.segmentWorld.gate.height, 2.5), mat);
+    const right = left.clone();
+    const top = new THREE.Mesh(new THREE.BoxGeometry(this.segmentWorld.gate.width, 2.5, 2.5), mat);
+    left.position.x = -this.segmentWorld.gate.width / 2;
+    right.position.x = this.segmentWorld.gate.width / 2;
+    top.position.y = this.segmentWorld.gate.height / 2;
+    group.add(left, right, top);
+    group.position.set(this.segmentWorld.gate.x, this.segmentWorld.gate.height / 2, this.segmentWorld.gate.z);
+    return { ...this.segmentWorld.gate, mesh: group };
+  }
+
+  createWormholeObject() {
+    const THREE = this.THREE;
+    const group = new THREE.Group();
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(this.segmentWorld.wormhole.radius, 2.2, 16, 48),
+      new THREE.MeshStandardMaterial({ color: 0xf472b6, emissive: 0x7e22ce, emissiveIntensity: 0.9 })
+    );
+    const core = new THREE.Mesh(
+      new THREE.CylinderGeometry(this.segmentWorld.wormhole.radius * 0.72, this.segmentWorld.wormhole.radius * 0.72, 1.2, 36),
+      new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.35 })
+    );
+    core.rotation.z = Math.PI / 2;
+    group.add(ring, core);
+    group.position.set(this.segmentWorld.wormhole.x, 8, this.segmentWorld.wormhole.z);
+    return { ...this.segmentWorld.wormhole, mesh: group };
+  }
+
+  addZoneFrame(group, zone, color, label) {
+    const THREE = this.THREE;
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(zone.maxX - zone.minX, 0.2, zone.maxZ - zone.minZ),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.16 })
+    );
+    frame.position.set((zone.minX + zone.maxX) / 2, 0.12, (zone.minZ + zone.maxZ) / 2);
+    group.add(frame);
+
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(zone.maxX - zone.minX, 1.2, zone.maxZ - zone.minZ)),
+      new THREE.LineBasicMaterial({ color })
+    );
+    edges.position.set(frame.position.x, 0.6, frame.position.z);
+    group.add(edges);
+
+    const labelSprite = this.createLabelSprite(label, color);
+    labelSprite.position.set(frame.position.x, 4, zone.minZ - 2);
+    group.add(labelSprite);
+  }
+
+  createLabelSprite(text, color) {
+    const THREE = this.THREE;
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#e2e8f0";
-    ctx.font = "18px Trebuchet MS";
-    ctx.textAlign = "left";
-    ctx.fillText(this.departure.portLabel, this.departure.pad.x, this.departure.pad.y - 16);
-    ctx.fillText(this.departure.planetLabel, 44, 58);
+    ctx.font = "24px Trebuchet MS";
+    ctx.textAlign = "center";
+    ctx.fillText(text, canvas.width / 2, 42);
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture, color });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(18, 4.5, 1);
+    return sprite;
   }
 
-  drawBoardingScene(ctx, state, character, ship, time) {
-    if (!this.departure) {
-      return;
+  update(deltaTime, routeProgress, state) {
+    this.objects.forEach((object, index) => {
+      object.mesh.rotation.x += deltaTime * 0.35;
+      object.mesh.rotation.y += deltaTime * (object.spin ?? 0.4);
+      if (object.kind === "asteroid") {
+        object.z += object.velocityZ * deltaTime;
+        if (object.z < object.minZ || object.z > object.maxZ) {
+          object.velocityZ *= -1;
+          object.z = clamp(object.z, Math.min(object.minZ, object.maxZ), Math.max(object.minZ, object.maxZ));
+        }
+        object.mesh.position.z = object.z;
+      } else {
+        object.mesh.position.y = Math.sin(state.time * 0.8 + index) * 0.6;
+      }
+    });
+
+    this.gravityZones.forEach((zone) => {
+      zone.mesh.material.opacity = 0.05 + Math.sin(state.time * 1.4 + zone.x * 0.01) * 0.02;
+    });
+
+    if (this.wormhole) {
+      this.wormhole.mesh.rotation.x += deltaTime * 0.7;
+      this.wormhole.mesh.rotation.z += deltaTime * 1.1;
+      this.wormhole.mesh.visible = !state.wormholeUsed;
     }
 
-    this.drawDepartureScene(ctx, state, ship, time);
-
-    ctx.fillStyle = "rgba(8, 15, 30, 0.94)";
-    ctx.fillRect(
-      this.departure.cargoZone.x,
-      this.departure.cargoZone.y,
-      this.departure.cargoZone.width,
-      this.departure.cargoZone.height
-    );
-    ctx.strokeStyle = state.cargoSecured ? "rgba(34, 197, 94, 0.72)" : "rgba(250, 204, 21, 0.72)";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(
-      this.departure.cargoZone.x,
-      this.departure.cargoZone.y,
-      this.departure.cargoZone.width,
-      this.departure.cargoZone.height
-    );
-
-    ctx.fillStyle = "rgba(15, 23, 42, 0.84)";
-    ctx.fillRect(
-      this.departure.boardingZone.x,
-      this.departure.boardingZone.y,
-      this.departure.boardingZone.width,
-      this.departure.boardingZone.height
-    );
-    ctx.strokeStyle = state.cargoSecured ? "rgba(34, 197, 94, 0.72)" : "rgba(103, 232, 249, 0.72)";
-    ctx.strokeRect(
-      this.departure.boardingZone.x,
-      this.departure.boardingZone.y,
-      this.departure.boardingZone.width,
-      this.departure.boardingZone.height
-    );
-
-    ctx.fillStyle = "#f8fafc";
-    ctx.font = "18px Trebuchet MS";
-    ctx.textAlign = "left";
-    ctx.fillText(state.cargoSecured ? "Cargo Registered" : "Cargo Checkpoint", this.departure.cargoZone.x, this.departure.cargoZone.y - 16);
-    ctx.fillText(state.cargoSecured ? "Board Ship" : "Boarding Ramp", this.departure.boardingZone.x, this.departure.boardingZone.y - 16);
+    if (this.station?.mesh) {
+      this.station.mesh.rotation.y += deltaTime * 0.2;
+    }
   }
 
-  drawArrivalScene(ctx, state, character, time) {
-    if (!this.departure) {
-      return;
-    }
-
-    const gradient = ctx.createLinearGradient(0, 0, 0, this.height);
-    gradient.addColorStop(0, "#040816");
-    gradient.addColorStop(0.52, "#0c1a33");
-    gradient.addColorStop(1, "#111827");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, this.width, this.height);
-
-    ctx.fillStyle = "rgba(226, 232, 240, 0.76)";
-    for (let index = 0; index < 70; index += 1) {
-      ctx.fillRect((index * 181) % this.width, (index * 97) % 260, index % 5 === 0 ? 3 : 2, index % 5 === 0 ? 3 : 2);
-    }
-
-    ctx.fillStyle = "rgba(15, 23, 42, 0.94)";
-    ctx.fillRect(0, 500, this.width, 220);
-    ctx.fillStyle = "rgba(30, 41, 59, 0.8)";
-    ctx.fillRect(0, 462, this.width, 40);
-
-    ctx.fillStyle = "rgba(56, 189, 248, 0.18)";
-    ctx.fillRect(220, 430, 420, 148);
-    ctx.strokeStyle = "rgba(125, 211, 252, 0.4)";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(220, 430, 420, 148);
-
-    ctx.fillStyle = "rgba(16, 185, 129, 0.16)";
-    ctx.fillRect(
-      this.departure.arrivalZone.x,
-      this.departure.arrivalZone.y,
-      this.departure.arrivalZone.width,
-      this.departure.arrivalZone.height
-    );
-    ctx.strokeStyle = "rgba(52, 211, 153, 0.7)";
-    ctx.strokeRect(
-      this.departure.arrivalZone.x,
-      this.departure.arrivalZone.y,
-      this.departure.arrivalZone.width,
-      this.departure.arrivalZone.height
-    );
-
-    ctx.fillStyle = "#f8fafc";
-    ctx.font = "18px Trebuchet MS";
-    ctx.fillText("Destination Hub", 236, 420);
-    ctx.fillText("Delivery Office", this.departure.arrivalZone.x - 8, this.departure.arrivalZone.y - 18);
-
-    this.drawDepartureLights(ctx, time);
+  setMode(mode) {
+    this.departureGroup.visible = mode === "preview" || mode === "boarding" || mode === "launch";
+    this.flightGroup.visible = mode === "flight" || mode === "wormhole";
+    this.arrivalGroup.visible = mode === "arrival";
   }
 
   getCargoCheckpointInfo(character) {
-    if (!this.departure) {
-      return { inZone: false };
-    }
-    return this.getZoneInfo(character, this.departure.cargoZone);
+    return this.getZoneInfo(character.position, this.segmentWorld.departure.cargoZone);
   }
 
   getBoardingInfo(character) {
-    if (!this.departure) {
-      return { inZone: false };
-    }
-    return this.getZoneInfo(character, this.departure.boardingZone);
+    return this.getZoneInfo(character.position, this.segmentWorld.departure.boardingZone);
   }
 
   getArrivalInfo(character) {
-    if (!this.departure) {
-      return { inZone: false };
-    }
-    return this.getZoneInfo(character, this.departure.arrivalZone);
+    return this.getZoneInfo(character.position, this.segmentWorld.arrival.deliveryZone);
   }
 
-  drawCargoContainers(ctx, state, player) {
-    if (!this.departure) {
-      return;
-    }
-
-    const loadedCount = state.cargoSecured
-      ? this.departure.cargoCount
-      : Math.floor(state.cargoProgress / 1.2 * this.departure.cargoCount);
-    for (let index = 0; index < this.departure.cargoCount; index += 1) {
-      const container = this.departure.containers[index];
-      let x = container.x;
-      let y = container.y;
-
-      if (index < loadedCount) {
-        const loadedOffset = index * 10;
-        x = player.position.x - 24 - loadedOffset;
-        y = player.position.y - 16 + index * 12;
-      } else if (state.cargoProgress > index / this.departure.cargoCount) {
-        const segmentProgress = clamp(
-          (state.cargoProgress - index / this.departure.cargoCount) * this.departure.cargoCount,
-          0,
-          1
-        );
-        x = container.x + (player.position.x - 26 - container.x) * segmentProgress;
-        y = container.y + (player.position.y - 6 - container.y) * segmentProgress;
-      }
-
-      ctx.fillStyle = "#334155";
-      ctx.fillRect(x, y, container.width, container.height);
-      ctx.strokeStyle = "#67e8f9";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, container.width, container.height);
-      ctx.fillStyle = "rgba(148, 163, 184, 0.45)";
-      ctx.fillRect(x + 3, y + 3, container.width - 6, 4);
-    }
-  }
-
-  getZoneInfo(entity, zone) {
-    const bounds = entity.getBounds();
-    const overlap = !(
-      bounds.x + bounds.width < zone.x ||
-      bounds.x > zone.x + zone.width ||
-      bounds.y + bounds.height < zone.y ||
-      bounds.y > zone.y + zone.height
-    );
-    return { inZone: overlap, zone };
-  }
-
-  drawDepartureLights(ctx, time) {
-    if (!this.departure) {
-      return;
-    }
-
-    this.departure.beacons.forEach((beacon, index) => {
-      const glow = 0.35 + Math.sin(time * 4 + index) * 0.15;
-      ctx.fillStyle = `rgba(125, 211, 252, ${glow})`;
-      ctx.beginPath();
-      ctx.arc(beacon.x, beacon.y, 6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "rgba(248, 250, 252, 0.95)";
-      ctx.beginPath();
-      ctx.arc(beacon.x, beacon.y, 2.2, 0, Math.PI * 2);
-      ctx.fill();
-    });
-  }
-
-  getLoadingInfo(player) {
-    if (!this.departure) {
-      return { inZone: false, alignment: 0 };
-    }
-
-    const zone = this.departure.loadingZone;
-    const playerBounds = player.getBounds();
-    const overlap = !(
-      playerBounds.x + playerBounds.width < zone.x ||
-      playerBounds.x > zone.x + zone.width ||
-      playerBounds.y + playerBounds.height < zone.y ||
-      playerBounds.y > zone.y + zone.height
-    );
-    const centerX = zone.x + zone.width / 2;
-    const centerY = zone.y + zone.height / 2;
-    const distance = Math.hypot(player.position.x - centerX, player.position.y - centerY);
-    const alignment = Math.max(0, 1 - distance / 90);
-
-    return { inZone: overlap, alignment, zone };
-  }
-
-  getDepartureForce(player, progress = 0) {
-    if (!this.departure) {
-      return { x: 0, y: 0 };
-    }
-
-    const gravityPull = this.departure.gravity.y * (1 - progress * 0.5);
-    const sideBias = this.departure.gravity.x;
-    const altitudeAssist = player.position.y < this.departure.pad.y ? -10 : 0;
+  getDepartureForce(ship, progress = 0) {
     return {
-      x: sideBias,
-      y: gravityPull + altitudeAssist
+      x: this.segmentWorld.departure.gravity.x * (1 - progress * 0.4),
+      y: this.segmentWorld.departure.gravity.y * (1 - progress * 0.55),
+      z: -ship.position.z * 0.22
     };
   }
 
-  getSolidCollision(player, routeProgress) {
-    const bounds = player.getBounds();
-
-    const obstacleHit = this.objects.find((object) => {
-      const screenX = this.toScreenX(object.worldX, routeProgress);
-      return circleRectCollision(screenX, object.worldY, object.radius, bounds);
-    });
-    if (obstacleHit) {
-      return obstacleHit;
-    }
-
-    const docking = this.getDockingInfo(player, routeProgress);
-    if (this.station && !docking.inZone) {
-      const stationX = this.toScreenX(this.station.worldX, routeProgress);
-      if (circleRectCollision(stationX, this.station.worldY, this.station.bodyRadius, bounds)) {
-        return { kind: "station" };
-      }
-    }
-
-    return null;
+  getSolidCollision(ship) {
+    return this.objects.find((object) => {
+      const dx = object.mesh.position.x - ship.position.x;
+      const dy = object.mesh.position.y - ship.position.y;
+      const dz = object.mesh.position.z - ship.position.z;
+      return Math.hypot(dx, dy, dz) < object.radius + ship.collisionRadius;
+    }) ?? null;
   }
 
-  getDockingInfo(player, routeProgress) {
-    if (!this.station) {
-      return { inZone: false, alignment: 0 };
-    }
+  getDockingInfo(ship) {
+    const dx = Math.abs(ship.position.x - this.station.x);
+    const dz = Math.abs(ship.position.z - this.station.z);
+    const inZone = dx <= this.station.zoneDepth / 2 && dz <= this.station.zoneHeight / 2;
+    const alignment = Math.max(0, 1 - dz / Math.max(this.station.zoneHeight / 2, 1));
+    return { inZone, alignment };
+  }
 
-    const screenX = this.toScreenX(this.station.worldX, routeProgress);
-    const zone = {
-      x: screenX - this.station.zoneOffsetX,
-      y: this.station.worldY - this.station.zoneHeight / 2,
-      width: this.station.zoneWidth,
-      height: this.station.zoneHeight
-    };
-
-    const playerBounds = player.getBounds();
-    const overlap = !(
-      playerBounds.x + playerBounds.width < zone.x ||
-      playerBounds.x > zone.x + zone.width ||
-      playerBounds.y + playerBounds.height < zone.y ||
-      playerBounds.y > zone.y + zone.height
-    );
-
-    const centerY = player.position.y;
-    const distanceFromCenter = Math.abs(centerY - this.station.worldY);
-    const alignment = Math.max(0, 1 - distanceFromCenter / (this.station.zoneHeight / 2));
-
+  getGateInfo(ship) {
+    const dx = Math.abs(ship.position.x - this.gate.x);
+    const dz = Math.abs(ship.position.z - this.gate.z);
     return {
-      inZone: overlap,
-      alignment,
-      zone,
-      screenX
+      inZone: dx <= this.gate.width / 2 && dz <= this.gate.width * 0.45
     };
   }
 
-  getGateInfo(player, routeProgress) {
-    if (!this.gate) {
-      return { inZone: false, screenX: 0 };
-    }
-
-    const screenX = this.toScreenX(this.gate.worldX, routeProgress);
-    const playerBounds = player.getBounds();
-    const inHorizontalRange = playerBounds.x + playerBounds.width >= screenX - this.gate.width / 2 &&
-      playerBounds.x <= screenX + this.gate.width / 2;
-    const inVerticalRange = player.position.y >= this.gate.worldY - this.gate.height / 2 &&
-      player.position.y <= this.gate.worldY + this.gate.height / 2;
-
-    return {
-      inZone: inHorizontalRange && inVerticalRange,
-      screenX
-    };
-  }
-
-  getGravityInfluence(player, routeProgress, resistance) {
+  getGravityInfluence(ship, resistance) {
     for (const zone of this.gravityZones) {
-      const screenX = this.toScreenX(zone.worldX, routeProgress);
-      const dx = screenX - player.position.x;
-      const dy = zone.worldY - player.position.y;
-      const distance = Math.hypot(dx, dy);
+      const dx = zone.x - ship.position.x;
+      const dz = zone.z - ship.position.z;
+      const distance = Math.hypot(dx, dz);
       if (distance > zone.radius) {
         continue;
       }
-
       const pullFactor = 1 - distance / zone.radius;
-      const normalizedX = dx / Math.max(distance, 1);
-      const normalizedY = dy / Math.max(distance, 1);
       const resistanceFactor = Math.max(0.35, 1 - resistance * 0.1);
-      const forceStrength = zone.strength * pullFactor * resistanceFactor;
-
+      const scale = zone.strength * pullFactor * resistanceFactor;
       return {
         active: true,
-        label: zone.label,
         force: {
-          x: normalizedX * forceStrength,
-          y: normalizedY * forceStrength
+          x: dx / Math.max(distance, 1) * scale,
+          y: 0,
+          z: dz / Math.max(distance, 1) * scale
         },
         fuelPenalty: zone.fuelPenalty * pullFactor * resistanceFactor
       };
     }
-
-    return { active: false, label: "", force: { x: 0, y: 0 }, fuelPenalty: 0 };
+    return { active: false, force: { x: 0, y: 0, z: 0 }, fuelPenalty: 0 };
   }
 
-  getIonStormEffect(player, routeProgress, resistance) {
+  getIonStormEffect(ship, resistance) {
     for (const zone of this.ionZones) {
-      const screenX = this.toScreenX(zone.worldX, routeProgress);
-      const dx = Math.abs(screenX - player.position.x);
-      const dy = Math.abs(zone.worldY - player.position.y);
-      if (dx <= zone.width / 2 && dy <= zone.height / 2) {
+      const dx = Math.abs(zone.x - ship.position.x);
+      const dz = Math.abs(zone.z - ship.position.z);
+      if (dx <= zone.width / 2 && dz <= zone.depth / 2) {
         const resistanceFactor = Math.max(0.45, 1 - resistance * 0.08);
         return {
           active: true,
-          label: zone.label,
           fuelPenalty: zone.fuelPenalty * resistanceFactor,
           controlPenalty: zone.controlPenalty * resistanceFactor
         };
       }
     }
-
-    return {
-      active: false,
-      label: "",
-      fuelPenalty: 0,
-      controlPenalty: 0
-    };
+    return { active: false, fuelPenalty: 0, controlPenalty: 0 };
   }
 
-  getWormholeInfo(player, routeProgress, used) {
+  getWormholeInfo(ship, used) {
     if (!this.wormhole || used) {
-      return {
-        available: false,
-        inZone: false,
-        screenX: 0,
-        alignment: 0
-      };
+      return { available: false, inZone: false, alignment: 0 };
     }
-
-    const screenX = this.toScreenX(this.wormhole.worldX, routeProgress);
-    const dx = Math.abs(screenX - player.position.x);
-    const dy = Math.abs(this.wormhole.worldY - player.position.y);
-    const inZone = dx <= this.wormhole.captureWidth / 2 && dy <= this.wormhole.captureHeight / 2;
-    const alignment = Math.max(0, 1 - dy / (this.wormhole.captureHeight / 2));
-
+    const dx = Math.abs(this.wormhole.x - ship.position.x);
+    const dz = Math.abs(this.wormhole.z - ship.position.z);
     return {
       available: true,
-      inZone,
-      screenX,
-      alignment
+      inZone: dx <= this.wormhole.captureDepth / 2 && dz <= this.wormhole.captureHeight / 2,
+      alignment: Math.max(0, 1 - dz / Math.max(this.wormhole.captureHeight / 2, 1))
     };
   }
 
-  drawPlanets(ctx, routeProgress) {
-    this.planets.forEach((planet) => {
-      const screenX = this.toScreenX(planet.worldX, routeProgress * planet.parallax);
-      const y = planet.worldY;
-      if (screenX < -planet.radius * 1.6 || screenX > this.width + planet.radius * 1.6) {
-        return;
-      }
-
-      ctx.save();
-      const glow = ctx.createRadialGradient(screenX, y, planet.radius * 0.3, screenX, y, planet.radius * 1.6);
-      glow.addColorStop(0, planet.glowColor);
-      glow.addColorStop(1, "rgba(15, 23, 42, 0)");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(screenX, y, planet.radius * 1.6, 0, Math.PI * 2);
-      ctx.fill();
-
-      const planetGradient = ctx.createRadialGradient(
-        screenX - planet.radius * 0.3,
-        y - planet.radius * 0.35,
-        planet.radius * 0.2,
-        screenX,
-        y,
-        planet.radius
-      );
-      planetGradient.addColorStop(0, planet.lightColor);
-      planetGradient.addColorStop(0.55, planet.midColor);
-      planetGradient.addColorStop(1, planet.darkColor);
-      ctx.fillStyle = planetGradient;
-      ctx.beginPath();
-      ctx.arc(screenX, y, planet.radius, 0, Math.PI * 2);
-      ctx.fill();
-
-      if (planet.ring) {
-        ctx.strokeStyle = planet.ring.color;
-        ctx.lineWidth = planet.ring.width;
-        ctx.beginPath();
-        ctx.ellipse(screenX, y, planet.radius * 1.45, planet.radius * 0.4, planet.ring.rotation, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      ctx.restore();
-    });
+  getRouteLength() {
+    return this.segmentWorld.routeLength;
   }
 
-  drawGravityZones(ctx, routeProgress) {
-    this.gravityZones.forEach((zone) => {
-      const screenX = this.toScreenX(zone.worldX, routeProgress);
-      if (screenX < -zone.radius || screenX > this.width + zone.radius) {
-        return;
-      }
-
-      ctx.save();
-      const gradient = ctx.createRadialGradient(screenX, zone.worldY, 16, screenX, zone.worldY, zone.radius);
-      gradient.addColorStop(0, "rgba(96, 165, 250, 0.32)");
-      gradient.addColorStop(0.45, "rgba(59, 130, 246, 0.14)");
-      gradient.addColorStop(1, "rgba(30, 64, 175, 0.02)");
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(screenX, zone.worldY, zone.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(125, 211, 252, 0.35)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(screenX, zone.worldY, zone.radius - 8, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    });
+  getDepartureWorld() {
+    return this.segmentWorld.departure;
   }
 
-  drawIonZones(ctx, routeProgress) {
-    this.ionZones.forEach((zone) => {
-      const screenX = this.toScreenX(zone.worldX, routeProgress);
-      if (screenX < -zone.width || screenX > this.width + zone.width) {
-        return;
-      }
-
-      ctx.save();
-      const gradient = ctx.createLinearGradient(
-        screenX - zone.width / 2,
-        zone.worldY,
-        screenX + zone.width / 2,
-        zone.worldY
-      );
-      gradient.addColorStop(0, "rgba(34, 197, 94, 0)");
-      gradient.addColorStop(0.5, "rgba(74, 222, 128, 0.18)");
-      gradient.addColorStop(1, "rgba(34, 197, 94, 0)");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(screenX - zone.width / 2, zone.worldY - zone.height / 2, zone.width, zone.height);
-      ctx.strokeStyle = "rgba(134, 239, 172, 0.25)";
-      ctx.strokeRect(screenX - zone.width / 2, zone.worldY - zone.height / 2, zone.width, zone.height);
-      ctx.restore();
-    });
+  getArrivalWorld() {
+    return this.segmentWorld.arrival;
   }
 
-  drawWormhole(ctx, routeProgress, used) {
-    if (!this.wormhole || used) {
-      return;
-    }
-
-    const screenX = this.toScreenX(this.wormhole.worldX, routeProgress);
-    if (screenX < -240 || screenX > this.width + 240) {
-      return;
-    }
-
-    ctx.save();
-    const gradient = ctx.createRadialGradient(screenX, this.wormhole.worldY, 18, screenX, this.wormhole.worldY, this.wormhole.radius);
-    gradient.addColorStop(0, "rgba(244, 114, 182, 0.8)");
-    gradient.addColorStop(0.4, "rgba(168, 85, 247, 0.45)");
-    gradient.addColorStop(1, "rgba(59, 7, 100, 0.02)");
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(screenX, this.wormhole.worldY, this.wormhole.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(244, 114, 182, 0.55)";
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.arc(screenX, this.wormhole.worldY, this.wormhole.radius - 8, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([8, 10]);
-    ctx.strokeStyle = "rgba(244, 114, 182, 0.35)";
-    ctx.strokeRect(
-      screenX - this.wormhole.captureWidth / 2,
-      this.wormhole.worldY - this.wormhole.captureHeight / 2,
-      this.wormhole.captureWidth,
-      this.wormhole.captureHeight
-    );
-    ctx.setLineDash([]);
-    ctx.fillStyle = "#f8fafc";
-    ctx.font = "18px Trebuchet MS";
-    ctx.textAlign = "center";
-    ctx.fillText("Wormhole Shortcut", screenX, this.wormhole.worldY + this.wormhole.radius + 24);
-    ctx.restore();
+  getZoneInfo(position, zone) {
+    return {
+      inZone:
+        position.x >= zone.minX &&
+        position.x <= zone.maxX &&
+        position.z >= zone.minZ &&
+        position.z <= zone.maxZ
+    };
   }
 
-  drawStation(ctx, routeProgress, stationCompleted) {
-    if (!this.station) {
-      return;
-    }
-
-    const screenX = this.toScreenX(this.station.worldX, routeProgress);
-    if (screenX < -220 || screenX > this.width + 220) {
-      return;
-    }
-
-    ctx.save();
-    ctx.translate(screenX, this.station.worldY);
-    ctx.fillStyle = stationCompleted ? "#0f766e" : "#0f172a";
-    ctx.beginPath();
-    ctx.arc(0, 0, this.station.bodyRadius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = stationCompleted ? "#5eead4" : "#38bdf8";
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.arc(0, 0, this.station.bodyRadius - 14, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.fillStyle = "rgba(56, 189, 248, 0.24)";
-    ctx.fillRect(-this.station.zoneOffsetX, -this.station.zoneHeight / 2, this.station.zoneWidth, this.station.zoneHeight);
-    ctx.strokeStyle = "rgba(125, 211, 252, 0.65)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(-this.station.zoneOffsetX, -this.station.zoneHeight / 2, this.station.zoneWidth, this.station.zoneHeight);
-
-    ctx.fillStyle = "#f8fafc";
-    ctx.font = "18px Trebuchet MS";
-    ctx.textAlign = "center";
-    ctx.fillText(stationCompleted ? "Refueled Station" : "Docking Station", 0, this.station.bodyRadius + 28);
-    ctx.restore();
-  }
-
-  drawGate(ctx, routeProgress, stationCompleted) {
-    if (!this.gate) {
-      return;
-    }
-
-    const screenX = this.toScreenX(this.gate.worldX, routeProgress);
-    if (screenX < -220 || screenX > this.width + 220) {
-      return;
-    }
-
-    ctx.save();
-    ctx.translate(screenX, this.gate.worldY);
-    ctx.strokeStyle = stationCompleted ? "#a7f3d0" : "#7dd3fc";
-    ctx.lineWidth = 6;
-    ctx.strokeRect(-12, -this.gate.height / 2, 24, this.gate.height);
-    ctx.fillStyle = stationCompleted ? "rgba(16, 185, 129, 0.18)" : "rgba(14, 165, 233, 0.14)";
-    ctx.fillRect(-30, -this.gate.height / 2, 60, this.gate.height);
-    ctx.fillStyle = "#f8fafc";
-    ctx.font = "18px Trebuchet MS";
-    ctx.textAlign = "center";
-    ctx.fillText("Destination Gate", 0, -this.gate.height / 2 - 14);
-    ctx.restore();
-  }
-
-  toScreenX(worldX, routeProgress) {
-    return worldX - routeProgress + ANCHOR_X;
+  toRouteZ(worldY) {
+    return (360 - worldY) * this.depthScale;
   }
 
   normalizedNoise(seed, salt) {
@@ -851,6 +625,6 @@ export class ObstacleManager {
   }
 }
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
+function hexFromCss(value) {
+  return Number.parseInt(value.replace("#", "0x"), 16);
 }
