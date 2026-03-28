@@ -22,8 +22,12 @@ export class PlayerCharacter {
     this.collisionRadius = 1.05;
     this.group = this.createModel();
     this.cameraAnchor = new THREE.Object3D();
-    this.cameraAnchor.position.set(0, 2.38, 0.08);
+    this.cameraAnchor.position.set(0, 2.18, 0.04);
     this.group.add(this.cameraAnchor);
+    this.cameraAnchor.add(this.firstPersonCargo);
+    this.firstPersonMode = false;
+    this.carryingCargo = false;
+    this.cargoCarryProgress = 0;
     this.reset({ x, y: 1.14, z });
   }
 
@@ -31,68 +35,106 @@ export class PlayerCharacter {
     const THREE = this.THREE;
     const group = new THREE.Group();
 
-    const darkSuit = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.86, metalness: 0.06 });
-    const cyanSuit = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.62, metalness: 0.08 });
-    const trim = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.38, metalness: 0.14 });
-    const visorMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, emissive: 0x67e8f9, emissiveIntensity: 0.5 });
+    const shell = new THREE.MeshStandardMaterial({ color: 0x9fb6cb, roughness: 0.46, metalness: 0.42 });
+    const joint = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.88, metalness: 0.08 });
+    const accent = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.52, metalness: 0.16 });
+    const trim = new THREE.MeshStandardMaterial({ color: 0x67e8f9, roughness: 0.34, metalness: 0.22, emissive: 0x0ea5e9, emissiveIntensity: 0.18 });
+    const visorMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, emissive: 0x67e8f9, emissiveIntensity: 0.36 });
+    const cargoMat = new THREE.MeshStandardMaterial({ color: 0xd8f8ff, emissive: 0x22d3ee, emissiveIntensity: 0.28, roughness: 0.32, metalness: 0.18 });
+    const cargoHandleMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.74, metalness: 0.16 });
 
-    const hips = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.38, 0.48), darkSuit);
-    hips.position.y = 1.02;
+    const hips = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.34, 0.36), joint);
+    hips.position.y = 1.01;
     hips.castShadow = true;
 
-    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.38, 1.28, 8, 12), cyanSuit);
-    torso.position.y = 1.88;
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 1.1, 8, 12), shell);
+    torso.position.y = 1.76;
     torso.castShadow = true;
 
-    const backpack = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.94, 0.34), darkSuit);
-    backpack.position.set(0, 1.86, -0.3);
+    const spine = new THREE.Mesh(new THREE.BoxGeometry(0.28, 1.18, 0.18), accent);
+    spine.position.set(0, 1.72, -0.16);
+    spine.castShadow = true;
+
+    const backpack = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.84, 0.22), joint);
+    backpack.position.set(0, 1.74, -0.22);
     backpack.castShadow = true;
 
-    const chestRig = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.62, 0.2), trim);
-    chestRig.position.set(0, 1.88, 0.3);
+    const chestRig = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.44, 0.14), accent);
+    chestRig.position.set(0, 1.78, 0.18);
+    chestRig.castShadow = true;
 
-    const shoulderLeft = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), trim);
-    shoulderLeft.position.set(-0.48, 2.18, 0);
+    const shoulderLeft = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), shell);
+    shoulderLeft.position.set(-0.34, 2.03, 0);
     const shoulderRight = shoulderLeft.clone();
-    shoulderRight.position.x = 0.48;
+    shoulderRight.position.x = 0.34;
 
-    const armGeometry = new THREE.CapsuleGeometry(0.12, 0.84, 4, 8);
-    const armLeft = new THREE.Mesh(armGeometry, darkSuit);
-    armLeft.position.set(-0.64, 1.62, 0);
-    armLeft.rotation.z = 0.14;
+    const armGeometry = new THREE.CapsuleGeometry(0.09, 0.86, 4, 8);
+    const armLeft = new THREE.Mesh(armGeometry, joint);
+    armLeft.position.set(-0.48, 1.48, 0);
+    armLeft.rotation.z = 0.1;
     armLeft.castShadow = true;
     const armRight = armLeft.clone();
-    armRight.position.x = 0.64;
-    armRight.rotation.z = -0.14;
+    armRight.position.x = 0.48;
+    armRight.rotation.z = -0.1;
 
-    const legGeometry = new THREE.CapsuleGeometry(0.14, 0.96, 4, 8);
-    const legLeft = new THREE.Mesh(legGeometry, darkSuit);
+    const thighGeometry = new THREE.CapsuleGeometry(0.11, 0.88, 4, 8);
+    const legLeft = new THREE.Mesh(thighGeometry, joint);
     legLeft.position.set(-0.18, 0.34, 0);
     legLeft.castShadow = true;
     const legRight = legLeft.clone();
     legRight.position.x = 0.18;
 
-    const bootGeometry = new THREE.BoxGeometry(0.24, 0.18, 0.48);
+    const shinLeft = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.72, 4, 8), shell);
+    shinLeft.position.set(-0.18, 0.02, 0.02);
+    shinLeft.castShadow = true;
+    const shinRight = shinLeft.clone();
+    shinRight.position.x = 0.18;
+
+    const bootGeometry = new THREE.BoxGeometry(0.22, 0.16, 0.38);
     const bootLeft = new THREE.Mesh(bootGeometry, trim);
-    bootLeft.position.set(-0.18, -0.28, 0.08);
+    bootLeft.position.set(-0.18, -0.35, 0.04);
     const bootRight = bootLeft.clone();
     bootRight.position.x = 0.18;
 
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.34, 18, 18), trim);
-    helmet.position.y = 2.76;
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.25, 18, 18), shell);
+    helmet.position.y = 2.46;
     helmet.castShadow = true;
 
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.22, 0.12), visorMat);
-    visor.position.set(0, 2.76, 0.28);
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.14, 0.12), visorMat);
+    visor.position.set(0, 2.46, 0.2);
 
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.14, 10), darkSuit);
-    neck.position.y = 2.36;
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.14, 10), joint);
+    neck.position.y = 2.16;
 
-    this.firstPersonHidden = [helmet, visor];
+    const handCase = new THREE.Group();
+    const caseBody = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.42), cargoMat);
+    caseBody.castShadow = true;
+    const caseTrim = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.04, 0.46), cargoHandleMat);
+    caseTrim.position.y = 0.12;
+    const caseHandle = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.015, 8, 16, Math.PI), cargoHandleMat);
+    caseHandle.rotation.z = Math.PI;
+    caseHandle.position.y = 0.15;
+    handCase.add(caseBody, caseTrim, caseHandle);
+    handCase.position.set(0.42, 1.18, 0.2);
+    handCase.rotation.set(0.18, 0.24, -0.24);
+    handCase.visible = false;
+
+    this.firstPersonCargo = new THREE.Group();
+    const fpCaseBody = caseBody.clone();
+    const fpCaseTrim = caseTrim.clone();
+    const fpCaseHandle = caseHandle.clone();
+    this.firstPersonCargo.add(fpCaseBody, fpCaseTrim, fpCaseHandle);
+    this.firstPersonCargo.position.set(0.22, -0.4, -0.62);
+    this.firstPersonCargo.rotation.set(0.12, -0.26, -0.12);
+    this.firstPersonCargo.visible = false;
+
+    this.firstPersonHidden = [helmet, visor, neck, torso, backpack, spine, chestRig, shoulderLeft, shoulderRight, armLeft, armRight];
+    this.worldCargo = handCase;
 
     group.add(
       hips,
       torso,
+      spine,
       backpack,
       chestRig,
       shoulderLeft,
@@ -101,11 +143,14 @@ export class PlayerCharacter {
       armRight,
       legLeft,
       legRight,
+      shinLeft,
+      shinRight,
       bootLeft,
       bootRight,
       neck,
       helmet,
-      visor
+      visor,
+      handCase
     );
 
     return group;
@@ -125,6 +170,8 @@ export class PlayerCharacter {
     this.facing = 0;
     this.walkCycle = 0;
     this.headBob = 0;
+    this.carryingCargo = false;
+    this.cargoCarryProgress = 0;
     this.syncSceneObject();
   }
 
@@ -148,6 +195,9 @@ export class PlayerCharacter {
     } else {
       this.headBob *= Math.exp(-10 * deltaTime);
     }
+
+    const carryTarget = this.carryingCargo ? 1 : 0;
+    this.cargoCarryProgress += (carryTarget - this.cargoCarryProgress) * clamp(deltaTime * 7.5, 0, 1);
 
     const damping = Math.exp(-9.6 * deltaTime);
     this.velocity.x *= damping;
@@ -174,7 +224,17 @@ export class PlayerCharacter {
   syncSceneObject() {
     this.group.position.set(this.position.x, this.position.y, this.position.z);
     this.group.rotation.y = -this.facing + Math.PI / 2;
-    this.cameraAnchor.position.y = 2.38 + this.headBob;
+    this.cameraAnchor.position.y = 2.18 + this.headBob * 0.45;
+    this.worldCargo.visible = !this.firstPersonMode && this.cargoCarryProgress > 0.03;
+    this.firstPersonCargo.visible = this.firstPersonMode && this.cargoCarryProgress > 0.03;
+    this.worldCargo.position.set(0.42, 1.18 + Math.abs(this.headBob) * 0.35, 0.2);
+    this.worldCargo.rotation.set(0.16, 0.24, -0.22 + Math.sin(this.walkCycle) * 0.08);
+    this.firstPersonCargo.position.set(
+      0.22,
+      -0.38 + Math.abs(this.headBob) * 0.12 + (1 - this.cargoCarryProgress) * 0.3,
+      -0.62
+    );
+    this.firstPersonCargo.rotation.set(0.12 + Math.sin(this.walkCycle) * 0.03, -0.26, -0.12);
   }
 
   getBounds() {
@@ -193,9 +253,20 @@ export class PlayerCharacter {
   }
 
   setFirstPersonView(enabled) {
+    this.firstPersonMode = enabled;
     this.firstPersonHidden.forEach((mesh) => {
       mesh.visible = !enabled;
     });
+    this.worldCargo.visible = !enabled && this.cargoCarryProgress > 0.03;
+    this.firstPersonCargo.visible = enabled && this.cargoCarryProgress > 0.03;
+  }
+
+  setCargoCarried(enabled, immediate = false) {
+    this.carryingCargo = enabled;
+    if (immediate) {
+      this.cargoCarryProgress = enabled ? 1 : 0;
+      this.syncSceneObject();
+    }
   }
 }
 
@@ -310,7 +381,10 @@ export class ShipPlayer {
     this.thrusterGlow.position.set(-10.2, 0.1, 0);
 
     this.cameraAnchor = new THREE.Object3D();
-    this.cameraAnchor.position.set(2.55, 1.34, 0);
+    this.cameraAnchor.position.set(4.15, 1.86, 0);
+    this.firstPersonHidden = [cockpitBase, canopyFrameRear, canopyFrameTop, canopyFrameLeft, canopyFrameRight, dashboard, dashboardLight, sideConsoleLeft, sideConsoleRight];
+    this.firstPersonVisibleOnly = [canopyFrameFront];
+    this.firstPersonMode = false;
 
     const runningLights = [
       [-2.6, 0.72, -1.8],
@@ -497,7 +571,17 @@ export class ShipPlayer {
     this.group.visible = visible;
   }
 
-  setFirstPersonView(_enabled) {}
+  setFirstPersonView(enabled) {
+    this.firstPersonMode = enabled;
+    this.firstPersonHidden.forEach((mesh) => {
+      mesh.visible = !enabled;
+    });
+    this.firstPersonVisibleOnly.forEach((mesh) => {
+      mesh.visible = true;
+      mesh.scale.setScalar(enabled ? 0.82 : 1);
+    });
+    this.cameraAnchor.position.set(enabled ? 4.15 : 2.55, enabled ? 1.86 : 1.34, 0);
+  }
 }
 
 export { ShipPlayer as Player };

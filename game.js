@@ -292,7 +292,7 @@ export class Game {
 
       const isShip = this.isShipState();
       const sensitivity = isShip ? 0.0018 : 0.0022;
-      this.look.yaw = this.normalizeAngle(this.look.yaw - event.movementX * sensitivity);
+      this.look.yaw = this.normalizeAngle(this.look.yaw + event.movementX * sensitivity);
       this.look.pitch = clamp(
         this.look.pitch - event.movementY * sensitivity,
         isShip ? -0.42 : -0.7,
@@ -403,6 +403,7 @@ export class Game {
     const departure = this.obstacles.getDepartureWorld();
     const stats = this.getDerivedStats();
     this.character.reset(departure.characterSpawn);
+    this.character.setCargoCarried(false, true);
     this.player.reset(departure.shipSpawn, this.save.upgrades);
     this.run = {
       ...this.createEmptyRun(),
@@ -498,7 +499,8 @@ export class Game {
         this.run.cargoSecured = true;
         this.run.cargoLoaded = 3;
         this.run.cargoProgress = 1;
-        this.setToast("Manifest logged. Proceed to the boarding ramp.", 2.2);
+        this.character.setCargoCarried(true);
+        this.setToast("Manifest secured. Carry it to the boarding ramp.", 2.2);
       }
     } else {
       this.objectiveText = "Move to the cyan ramp zone and board the freighter.";
@@ -508,6 +510,7 @@ export class Game {
           ? "Step fully into the cyan ramp zone."
           : "Follow the cyan beacon to the boarding ramp.";
       if (boarding.inZone && interact) {
+        this.character.setCargoCarried(false, true);
         this.state = "launch";
         this.look.yaw = this.player.orientation;
         this.look.pitch = -0.04;
@@ -555,7 +558,7 @@ export class Game {
     );
 
     this.run.fuel = clamp(
-      safeNumber(this.run.fuel, maxFuel) - (0.34 + (movement.thrusting ? 0.5 : 0)) * deltaTime,
+      safeNumber(this.run.fuel, maxFuel) - (0.14 + (movement.thrusting ? 0.24 : 0)) * deltaTime,
       0,
       maxFuel
     );
@@ -630,7 +633,8 @@ export class Game {
     }
 
     this.run.fuel = clamp(
-      safeNumber(this.run.fuel, maxFuel) - (0.82 + (movement.thrusting ? 1.05 : 0) + gravity.fuelPenalty + ionStorm.fuelPenalty) * deltaTime,
+      safeNumber(this.run.fuel, maxFuel) -
+        (0.42 + (movement.thrusting ? 0.58 : 0) + gravity.fuelPenalty * 0.7 + ionStorm.fuelPenalty * 0.7) * deltaTime,
       0,
       maxFuel
     );
@@ -819,6 +823,7 @@ export class Game {
     this.persistSave();
     this.helpOpen = false;
     this.state = "gameOver";
+    this.character.setCargoCarried(false, true);
     this.syncPreviewActors();
   }
 
@@ -877,10 +882,10 @@ export class Game {
     if (this.isShipState()) {
       this.player.cameraAnchor.getWorldPosition(this.tempVectorA);
       const telemetry = this.player.getTelemetry();
-      const direction = this.vectorFromYawPitch(telemetry.orientation, telemetry.pitch, this.tempVectorB);
+      const direction = this.vectorFromYawPitch(this.look.yaw, this.look.pitch, this.tempVectorB);
       const lookAt = direction.multiplyScalar(90).add(this.tempVectorA);
-      const cockpitSway = this.THREE.MathUtils.lerp(0, telemetry.velocity.z * 0.015, 0.45);
-      this.tempVectorA.y += Math.sin(this.time * 16) * (telemetry.thrusting ? 0.02 : 0.008);
+      const cockpitSway = this.THREE.MathUtils.lerp(0, telemetry.velocity.z * 0.004, 0.35);
+      this.tempVectorA.y += Math.sin(this.time * 14) * (telemetry.thrusting ? 0.007 : 0.003);
       this.tempVectorA.z += cockpitSway;
       if (this.state === "wormholeTransit") {
         this.tempVectorA.x += Math.sin(this.time * 44) * 0.08;
@@ -1051,7 +1056,7 @@ export class Game {
       this.addDetail(detailsEl, `Mandatory refuel: ${this.segment.stationLabel}`);
       this.addDetail(detailsEl, `Destination: ${this.segment.destinationLabel}`);
       this.addDetail(detailsEl, `Wormhole bonus: ${this.segment.wormhole ? `${this.segment.wormhole.rewardBonus} credits` : "None"}`);
-      this.addDetail(detailsEl, "Controls: WASD move, mouse look, E interact, H help");
+      this.addDetail(detailsEl, "Controls: Click view to capture mouse, WASD move, E interact, H help, Esc releases mouse");
       startButton.textContent = "Begin Boarding";
       startButton.disabled = false;
       restartButton.textContent = "Back";
@@ -1115,9 +1120,9 @@ export class Game {
 
   buildHelpMarkup() {
     const stateCard = this.isShipState()
-      ? `<div class="help-card"><h3>Current Phase</h3><p>Ship first-person: steer with the mouse, use <strong>W/S</strong> for thrust, <strong>A/D</strong> for lateral trim, and <strong>E</strong> for docking or wormhole actions. Click the view if the mouse is not captured, and press <strong>Esc</strong> to release it.</p></div>`
+      ? `<div class="help-card"><h3>Current Phase</h3><p>Ship first-person: move the mouse in the direction you want to look, use <strong>W/S</strong> for thrust, <strong>A/D</strong> for lateral trim, and press <strong>E</strong> to dock or enter a wormhole. Click the view if the mouse is not captured, and press <strong>Esc</strong> to release it.</p></div>`
       : this.isOnFootState()
-        ? `<div class="help-card"><h3>Current Phase</h3><p>Courier first-person: use <strong>WASD</strong> to walk, look with the mouse, and press <strong>E</strong> when you are fully inside the highlighted interaction zone.</p></div>`
+        ? `<div class="help-card"><h3>Current Phase</h3><p>Courier first-person: click the view to capture the mouse, use <strong>WASD</strong> to walk, look with the mouse, and press <strong>E</strong> when you are fully inside the highlighted interaction zone.</p></div>`
         : `<div class="help-card"><h3>Current Phase</h3><p>Use the command card to begin or continue the current contract. Once you are in gameplay, click the view to capture the mouse and press <strong>H</strong> anytime to reopen this help panel.</p></div>`;
 
     return `
@@ -1128,7 +1133,7 @@ export class Game {
       </div>
       <div class="help-card">
         <h3>How To Start</h3>
-        <p>At the port, walk to the yellow cargo zone and press <strong>E</strong> to log the manifest. Then walk to the cyan ramp zone and press <strong>E</strong> again to board the ship. After boarding, press <strong>E</strong> once more to ignite launch.</p>
+        <p>At the port, walk to the yellow cargo zone and press <strong>E</strong> to pick up the manifest case. Carry it to the cyan ramp zone, press <strong>E</strong> to board the ship, then press <strong>E</strong> once more to ignite launch.</p>
       </div>
       <div class="help-card">
         <h3>Route Rules</h3>
