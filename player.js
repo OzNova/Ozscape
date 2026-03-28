@@ -278,8 +278,10 @@ export class ShipPlayer {
     this.height = 4.2;
     this.baseAcceleration = 30;
     this.baseLateralAcceleration = 14;
+    this.baseVerticalAcceleration = 24;
     this.baseMaxForwardSpeed = 60;
     this.baseMaxLateralSpeed = 18;
+    this.baseMaxVerticalSpeed = 16;
     this.baseLift = 18;
     this.collisionRadius = 4.2;
     this.group = this.createModel();
@@ -382,6 +384,12 @@ export class ShipPlayer {
 
     this.cameraAnchor = new THREE.Object3D();
     this.cameraAnchor.position.set(4.15, 1.86, 0);
+    this.cameraLookAnchor = new THREE.Object3D();
+    this.cameraLookAnchor.position.set(12.4, 1.8, 0);
+    this.closeChaseAnchor = new THREE.Object3D();
+    this.closeChaseAnchor.position.set(-11.5, 5.8, 0);
+    this.farChaseAnchor = new THREE.Object3D();
+    this.farChaseAnchor.position.set(-20.5, 9.4, 0);
     this.firstPersonHidden = [cockpitBase, canopyFrameRear, canopyFrameTop, canopyFrameLeft, canopyFrameRight, dashboard, dashboardLight, sideConsoleLeft, sideConsoleRight];
     this.firstPersonVisibleOnly = [canopyFrameFront];
     this.firstPersonMode = false;
@@ -420,7 +428,10 @@ export class ShipPlayer {
       this.leftFlame,
       this.rightFlame,
       this.thrusterGlow,
-      this.cameraAnchor
+      this.cameraAnchor,
+      this.cameraLookAnchor,
+      this.closeChaseAnchor,
+      this.farChaseAnchor
     );
 
     return group;
@@ -458,15 +469,18 @@ export class ShipPlayer {
     const targetPitch = clamp(Number.isFinite(viewState.pitch) ? viewState.pitch : 0, -0.42, 0.38);
     const throttle = (input.w ? 1 : 0) - (input.s ? 0.7 : 0);
     const strafe = (input.d ? 1 : 0) - (input.a ? 1 : 0);
-    const thrusting = throttle !== 0 || strafe !== 0;
+    const verticalInput = (input.space ? 1 : 0) - ((input.shift || input.ctrl) ? 1 : 0);
+    const thrusting = throttle !== 0 || strafe !== 0 || verticalInput !== 0;
 
     this.orientation = lerpAngle(this.orientation, targetYaw, clamp(deltaTime * (2.3 + safeStats.handling * 0.12), 0, 1));
     this.pitch += (targetPitch - this.pitch) * clamp(deltaTime * 2.4, 0, 1);
 
     const forwardAcceleration = this.baseAcceleration + safeStats.engine * 3.1;
     const lateralAcceleration = this.baseLateralAcceleration + safeStats.handling * 1.6;
+    const verticalAcceleration = this.baseVerticalAcceleration + safeStats.engine * 1.8 + safeStats.handling * 0.8;
     const maxForwardSpeed = this.baseMaxForwardSpeed + safeStats.engine * 3.3;
     const maxLateralSpeed = this.baseMaxLateralSpeed + safeStats.handling * 1.6;
+    const maxVerticalSpeed = this.baseMaxVerticalSpeed + safeStats.engine * 1.2;
     const verticalLift = this.baseLift + safeStats.engine * 1.6;
 
     const forwardX = Math.cos(this.orientation);
@@ -481,6 +495,7 @@ export class ShipPlayer {
     this.velocity.y += throttle * verticalLift * pitchLiftFactor * deltaTime;
     this.velocity.x += rightX * strafe * lateralAcceleration * deltaTime;
     this.velocity.z += rightZ * strafe * lateralAcceleration * deltaTime;
+    this.velocity.y += verticalInput * verticalAcceleration * deltaTime;
 
     if (environment.force) {
       this.velocity.x += (environment.force.x ?? 0) * deltaTime;
@@ -496,10 +511,13 @@ export class ShipPlayer {
     if (environment.stabilizeZ) {
       this.velocity.z += (0 - this.position.z) * environment.stabilizeZ * deltaTime;
     }
+    if (environment.stabilizeY) {
+      this.velocity.y += (environment.targetY - this.position.y) * environment.stabilizeY * deltaTime;
+    }
 
-    this.velocity.x *= Math.exp(-0.82 * deltaTime);
-    this.velocity.z *= Math.exp(-(2.6 - safeStats.handling * 0.05) * deltaTime);
-    this.velocity.y *= Math.exp(-(2.15 - safeStats.durability * 0.04) * deltaTime);
+    this.velocity.x *= Math.exp(-1.1 * deltaTime);
+    this.velocity.z *= Math.exp(-(3 - safeStats.handling * 0.05) * deltaTime);
+    this.velocity.y *= Math.exp(-(2.6 - safeStats.durability * 0.04) * deltaTime);
 
     const planarSpeed = Math.hypot(this.velocity.x, this.velocity.z);
     if (planarSpeed > maxForwardSpeed) {
@@ -507,7 +525,7 @@ export class ShipPlayer {
       this.velocity.x *= scale;
       this.velocity.z *= scale;
     }
-    this.velocity.y = clamp(this.velocity.y, -12, 12);
+    this.velocity.y = clamp(this.velocity.y, -maxVerticalSpeed, maxVerticalSpeed);
 
     const lateralAlongRight = this.velocity.x * rightX + this.velocity.z * rightZ;
     if (Math.abs(lateralAlongRight) > maxLateralSpeed) {
@@ -550,6 +568,7 @@ export class ShipPlayer {
     return {
       speed: Math.hypot(this.velocity.x, this.velocity.z),
       velocity: { ...this.velocity },
+      position: { ...this.position },
       orientation: this.renderOrientation,
       pitch: this.renderPitch,
       thrusting: this.lastThrusting

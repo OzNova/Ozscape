@@ -213,11 +213,14 @@ export class Game {
     this.fillLight.position.set(-80, 90, 120);
     this.scene.add(this.fillLight);
 
-    this.input = { w: false, a: false, s: false, d: false };
+    this.input = { w: false, a: false, s: false, d: false, space: false, shift: false, ctrl: false };
     this.interactPressed = false;
     this.helpOpen = false;
     this.pointerLocked = false;
     this.look = { yaw: 0, pitch: 0 };
+    this.shipCameraModes = ["cockpit", "close", "far"];
+    this.shipCameraMode = "cockpit";
+    this.minimapContext = controls.minimapCanvas?.getContext("2d") ?? null;
 
     this.state = "menu";
     this.segmentIndex = 0;
@@ -267,9 +270,23 @@ export class Game {
         event.preventDefault();
         this.input[key] = true;
       }
+      if (event.code === "Space") {
+        event.preventDefault();
+        this.input.space = true;
+      }
+      if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
+        this.input.shift = true;
+      }
+      if (event.code === "ControlLeft" || event.code === "ControlRight") {
+        this.input.ctrl = true;
+      }
       if (key === "e" || key === "enter") {
         event.preventDefault();
         this.interactPressed = true;
+      }
+      if (key === "c" && this.isShipState()) {
+        event.preventDefault();
+        this.cycleShipCamera();
       }
       if (key === "h" || key === "f1") {
         event.preventDefault();
@@ -282,6 +299,15 @@ export class Game {
       if (key in this.input) {
         event.preventDefault();
         this.input[key] = false;
+      }
+      if (event.code === "Space") {
+        this.input.space = false;
+      }
+      if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
+        this.input.shift = false;
+      }
+      if (event.code === "ControlLeft" || event.code === "ControlRight") {
+        this.input.ctrl = false;
       }
     });
 
@@ -309,6 +335,13 @@ export class Game {
         this.requestPointerLock();
       }
     });
+  }
+
+  cycleShipCamera() {
+    const currentIndex = this.shipCameraModes.indexOf(this.shipCameraMode);
+    this.shipCameraMode = this.shipCameraModes[(currentIndex + 1) % this.shipCameraModes.length];
+    this.setToast(`Camera: ${this.getShipCameraLabel()}`, 1.2);
+    this.renderUI();
   }
 
   requestPointerLock() {
@@ -411,6 +444,7 @@ export class Game {
     };
     this.summary = null;
     this.helpOpen = false;
+    this.shipCameraMode = "cockpit";
     this.setLookFromTarget(
       departure.characterSpawn.x,
       departure.characterSpawn.z,
@@ -533,7 +567,7 @@ export class Game {
     if (!this.run.launchAuthorized) {
       this.statusText = "Freighter powered on.";
       this.objectiveText = "Ignite launch, then climb through the corridor.";
-      this.promptText = "Press E to ignite launch. Use mouse to steer, W/S for thrust, A/D for lateral trim.";
+      this.promptText = "Press E to ignite launch. Use W/S to thrust, A/D to trim, Space to rise, Shift to descend, and C to change camera.";
       if (interact) {
         this.run.launchAuthorized = true;
         this.setToast("Launch ignition confirmed. Climb out of the port.", 2);
@@ -548,7 +582,7 @@ export class Game {
         minX: departure.shipSpawn.x - 2,
         maxX: departure.departureLane.clearX + 12,
         minY: 3.8,
-        maxY: 26,
+        maxY: 34,
         minZ: -18,
         maxZ: 18
       },
@@ -574,8 +608,8 @@ export class Game {
     this.statusText = "Launch corridor active.";
     this.objectiveText = "Clear the corridor and break into open route space.";
     this.promptText = this.pointerLocked
-      ? "Pitch up and hold W to climb. Use A/D to stay centered."
-      : "Click the view to capture the camera, then climb with W.";
+      ? `Climb with W and Space. Follow the blue ${this.segment.stationLabel} beacon beyond the port.`
+      : "Click the view to capture the camera, then climb through the corridor.";
 
     if (this.run.fuel <= 0) {
       this.failMission("Fuel reserves depleted during launch.");
@@ -584,16 +618,9 @@ export class Game {
 
     if (this.player.position.x >= departure.departureLane.clearX || this.run.launchProgress >= 1) {
       this.state = "routeFlight";
-      this.player.position.x = 22;
-      this.player.position.y = 6;
-      this.player.position.z = 0;
-      this.player.velocity.x = 18;
-      this.player.velocity.y = 0;
-      this.player.velocity.z = 0;
-      this.player.syncSceneObject();
       this.run.routeProgress = this.player.position.x;
       this.look.pitch = 0;
-      this.setToast(`Route live. Dock at ${this.segment.stationLabel} before the gate.`, 2.8);
+      this.setToast(`Route live. Follow the station beacon and dock at ${this.segment.stationLabel}.`, 2.8);
     }
   }
 
@@ -649,6 +676,9 @@ export class Game {
     const wormhole = this.obstacles.getWormholeInfo(this.player, this.run.wormholeUsed);
     const interact = this.consumeInteract();
 
+    const currentTarget = this.getCurrentNavigationTarget();
+    const targetDistance = currentTarget ? this.formatDistance3D(this.player.position, currentTarget.position) : "";
+
     if (!this.run.stationCompleted && docking.inZone && movement.stable) {
       this.promptText = "Press E to engage docking clamps.";
       if (interact) {
@@ -670,8 +700,8 @@ export class Game {
       this.promptText = "Wormhole corridor ahead. Align and stabilize to enter.";
     } else {
       this.promptText = !this.run.stationCompleted
-        ? `Dock at ${this.segment.stationLabel} before heading for the destination gate.`
-        : `Fly to ${this.segment.destinationLabel}.`;
+        ? `Follow the station beacon to ${this.segment.stationLabel}${targetDistance ? ` (${targetDistance})` : ""}.`
+        : `Follow the gate beacon to ${this.segment.destinationLabel}${targetDistance ? ` (${targetDistance})` : ""}.`;
     }
 
     if (!this.pointerLocked) {
@@ -679,7 +709,9 @@ export class Game {
     }
 
     this.statusText = this.run.stationCompleted ? "Station serviced. Route cleared for delivery." : `Mandatory refuel required at ${this.segment.stationLabel}.`;
-    this.objectiveText = this.run.stationCompleted ? `Reach ${this.segment.destinationLabel}.` : `Dock at ${this.segment.stationLabel}.`;
+    this.objectiveText = this.run.stationCompleted
+      ? `Reach ${this.segment.destinationLabel}. ${this.segment.wormhole ? "Wormhole remains optional." : ""}`
+      : `Dock at ${this.segment.stationLabel}.`;
 
     if (this.obstacles.getGateInfo(this.player).inZone && this.run.stationCompleted) {
       this.completeMission();
@@ -880,19 +912,32 @@ export class Game {
     }
 
     if (this.isShipState()) {
-      this.player.cameraAnchor.getWorldPosition(this.tempVectorA);
       const telemetry = this.player.getTelemetry();
       const direction = this.vectorFromYawPitch(this.look.yaw, this.look.pitch, this.tempVectorB);
-      const lookAt = direction.multiplyScalar(90).add(this.tempVectorA);
-      const cockpitSway = this.THREE.MathUtils.lerp(0, telemetry.velocity.z * 0.004, 0.35);
-      this.tempVectorA.y += Math.sin(this.time * 14) * (telemetry.thrusting ? 0.007 : 0.003);
-      this.tempVectorA.z += cockpitSway;
-      if (this.state === "wormholeTransit") {
-        this.tempVectorA.x += Math.sin(this.time * 44) * 0.08;
-        this.tempVectorA.y += Math.cos(this.time * 38) * 0.08;
+      if (this.shipCameraMode === "cockpit") {
+        this.player.cameraAnchor.getWorldPosition(this.tempVectorA);
+        const lookAt = direction.multiplyScalar(90).add(this.tempVectorA);
+        const cockpitSway = this.THREE.MathUtils.lerp(0, telemetry.velocity.z * 0.004, 0.35);
+        this.tempVectorA.y += Math.sin(this.time * 14) * (telemetry.thrusting ? 0.007 : 0.003);
+        this.tempVectorA.z += cockpitSway;
+        if (this.state === "wormholeTransit") {
+          this.tempVectorA.x += Math.sin(this.time * 44) * 0.08;
+          this.tempVectorA.y += Math.cos(this.time * 38) * 0.08;
+        }
+        this.camera.position.lerp(this.tempVectorA, clamp(deltaTime * 20, 0, 1));
+        this.cameraTarget.lerp(lookAt, clamp(deltaTime * 18, 0, 1));
+      } else {
+        const anchor = this.shipCameraMode === "close" ? this.player.closeChaseAnchor : this.player.farChaseAnchor;
+        anchor.getWorldPosition(this.tempVectorA);
+        this.player.cameraLookAnchor.getWorldPosition(this.tempVectorB);
+        const lookAt = this.tempVectorB.clone();
+        lookAt.x += telemetry.velocity.x * 0.42;
+        lookAt.y += telemetry.velocity.y * 0.16;
+        lookAt.z += telemetry.velocity.z * 0.28;
+        this.tempVectorA.y += this.shipCameraMode === "close" ? 0.3 : 0.8;
+        this.camera.position.lerp(this.tempVectorA, clamp(deltaTime * (this.shipCameraMode === "close" ? 7.5 : 5.5), 0, 1));
+        this.cameraTarget.lerp(lookAt, clamp(deltaTime * 8.5, 0, 1));
       }
-      this.camera.position.lerp(this.tempVectorA, clamp(deltaTime * 20, 0, 1));
-      this.cameraTarget.lerp(lookAt, clamp(deltaTime * 18, 0, 1));
       this.camera.lookAt(this.cameraTarget);
       return;
     }
@@ -945,6 +990,131 @@ export class Game {
     this.toastTimer = duration;
   }
 
+  getShipCameraLabel() {
+    return this.shipCameraMode === "cockpit" ? "Cockpit" : this.shipCameraMode === "close" ? "Chase" : "Far Chase";
+  }
+
+  getCurrentNavigationTarget() {
+    if (this.state === "boarding") {
+      const departure = this.obstacles.getDepartureWorld();
+      if (!this.run.cargoSecured) {
+        return {
+          key: "cargo",
+          label: "Cargo Checkpoint",
+          position: {
+            x: (departure.cargoZone.minX + departure.cargoZone.maxX) / 2,
+            z: (departure.cargoZone.minZ + departure.cargoZone.maxZ) / 2
+          }
+        };
+      }
+      return {
+        key: "ramp",
+        label: "Boarding Ramp",
+        position: {
+          x: (departure.boardingZone.minX + departure.boardingZone.maxX) / 2,
+          z: (departure.boardingZone.minZ + departure.boardingZone.maxZ) / 2
+        }
+      };
+    }
+    if (this.state === "arrival") {
+      const arrival = this.obstacles.getArrivalWorld();
+      return {
+        key: "delivery",
+        label: "Delivery Office",
+        position: {
+          x: (arrival.deliveryZone.minX + arrival.deliveryZone.maxX) / 2,
+          z: (arrival.deliveryZone.minZ + arrival.deliveryZone.maxZ) / 2
+        }
+      };
+    }
+    const points = this.obstacles.getNavigationPoints(this.run.wormholeUsed);
+    if (!this.run.stationCompleted) {
+      return { key: "station", label: this.segment.stationLabel, position: points.station };
+    }
+    return { key: "gate", label: this.segment.destinationLabel, position: points.gate };
+  }
+
+  formatDistance3D(from, to) {
+    const distance = Math.hypot((to.x ?? 0) - (from.x ?? 0), (to.z ?? 0) - (from.z ?? 0));
+    return `${Math.max(1, Math.round(distance))} km`;
+  }
+
+  drawMinimap(target) {
+    if (!this.minimapContext || !this.controlsRef.minimapCanvas) {
+      return;
+    }
+
+    const ctx = this.minimapContext;
+    const canvas = this.controlsRef.minimapCanvas;
+    const width = canvas.width;
+    const height = canvas.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const range = this.state === "launch" ? 150 : this.isShipState() ? 220 : 90;
+    const points = this.obstacles.getNavigationPoints(this.run.wormholeUsed);
+    const trackedPosition = this.isOnFootState() ? this.character.position : this.player.position;
+    const trackedYaw = this.isOnFootState() ? this.look.yaw : this.look.yaw;
+    const hazards = this.isShipState() ? this.obstacles.getRadarContacts(this.player, range) : [];
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "rgba(3, 10, 21, 0.92)";
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.strokeStyle = "rgba(103, 232, 249, 0.18)";
+    ctx.lineWidth = 1;
+    [0.25, 0.5, 0.75].forEach((ratio) => {
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, (width * 0.46) * ratio, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+    ctx.beginPath();
+    ctx.moveTo(centerX, 0);
+    ctx.lineTo(centerX, height);
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(width, centerY);
+    ctx.stroke();
+
+    const drawPoint = (x, z, color, size = 4) => {
+      const dx = x - trackedPosition.x;
+      const dz = z - trackedPosition.z;
+      const cos = Math.cos(-trackedYaw + Math.PI / 2);
+      const sin = Math.sin(-trackedYaw + Math.PI / 2);
+      const rx = dx * cos - dz * sin;
+      const rz = dx * sin + dz * cos;
+      const px = centerX + clamp(rx / range, -0.9, 0.9) * (width * 0.42);
+      const py = centerY + clamp(rz / range, -0.9, 0.9) * (height * 0.42);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(px, py, size, 0, Math.PI * 2);
+      ctx.fill();
+    };
+
+    hazards.forEach((hazard) => drawPoint(hazard.x, hazard.z, hazard.kind === "asteroid" ? "#fca5a5" : "#cbd5e1", 2.2));
+    if (this.isShipState() || this.state === "launch") {
+      drawPoint(points.station.x, points.station.z, "#38bdf8", target?.key === "station" ? 4.6 : 3.4);
+      drawPoint(points.gate.x, points.gate.z, "#4ade80", target?.key === "gate" ? 4.6 : 3.4);
+    }
+    if ((this.isShipState() || this.state === "launch") && points.wormhole) {
+      drawPoint(points.wormhole.x, points.wormhole.z, "#f472b6", 3.5);
+    }
+    if (this.isOnFootState() && target?.position) {
+      drawPoint(target.position.x, target.position.z, target.key === "delivery" ? "#4ade80" : target.key === "cargo" ? "#fbbf24" : "#67e8f9", 4.4);
+    }
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(trackedYaw);
+    ctx.fillStyle = "#f8fafc";
+    ctx.beginPath();
+    ctx.moveTo(0, -10);
+    ctx.lineTo(6, 7);
+    ctx.lineTo(0, 3);
+    ctx.lineTo(-6, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
   render() {
     this.renderer.render(this.scene, this.camera);
   }
@@ -970,6 +1140,9 @@ export class Game {
       fuelValueEl,
       progressFillEl,
       progressValueEl,
+      cameraModeEl,
+      targetLabelEl,
+      minimapModeEl,
       startButton,
       restartButton
     } = this.controlsRef;
@@ -1003,6 +1176,7 @@ export class Game {
     const maxFuel = safeNumber(this.getDerivedStats().maxFuel, 45);
     const routeProgress = clamp(this.run.routeProgress / Math.max(this.obstacles.getRouteLength(), 1), 0, 1);
     const fuelRatio = clamp(safeNumber(this.run.fuel, maxFuel) / Math.max(maxFuel, 1), 0, 1);
+    const target = this.getCurrentNavigationTarget();
 
     scoreLabel.textContent = `${this.save.credits}`;
     statusLabel.textContent = this.statusText;
@@ -1018,6 +1192,15 @@ export class Game {
         : fuelRatio > 0.18
           ? "linear-gradient(90deg, #f59e0b, #f97316)"
           : "linear-gradient(90deg, #fb7185, #ef4444)";
+    if (cameraModeEl) {
+      cameraModeEl.textContent = this.isShipState() ? this.getShipCameraLabel() : "On Foot";
+    }
+    if (targetLabelEl) {
+      targetLabelEl.textContent = target?.label ?? "Mission";
+    }
+    if (minimapModeEl) {
+      minimapModeEl.textContent = this.state === "launch" ? "Launch Lane" : this.isShipState() ? "Deep Route" : "Port Grid";
+    }
 
     const gameplayState = this.isGameplayState();
     panelCard.classList.toggle("hidden", gameplayState);
@@ -1027,6 +1210,7 @@ export class Game {
     helpButton.textContent = this.helpOpen ? "Resume" : "Help";
     helpTitle.textContent = this.isShipState() ? "Cockpit Guide" : this.isOnFootState() ? "Courier Guide" : "Ozscape Controls";
     helpBody.innerHTML = this.buildHelpMarkup();
+    this.drawMinimap(target);
 
     if (gameplayState) {
       return;
@@ -1057,6 +1241,7 @@ export class Game {
       this.addDetail(detailsEl, `Destination: ${this.segment.destinationLabel}`);
       this.addDetail(detailsEl, `Wormhole bonus: ${this.segment.wormhole ? `${this.segment.wormhole.rewardBonus} credits` : "None"}`);
       this.addDetail(detailsEl, "Controls: Click view to capture mouse, WASD move, E interact, H help, Esc releases mouse");
+      this.addDetail(detailsEl, "Ship controls: W/S thrust, A/D trim, Space rise, Shift descend, C camera cycle");
       startButton.textContent = "Begin Boarding";
       startButton.disabled = false;
       restartButton.textContent = "Back";
@@ -1120,16 +1305,16 @@ export class Game {
 
   buildHelpMarkup() {
     const stateCard = this.isShipState()
-      ? `<div class="help-card"><h3>Current Phase</h3><p>Ship first-person: move the mouse in the direction you want to look, use <strong>W/S</strong> for thrust, <strong>A/D</strong> for lateral trim, and press <strong>E</strong> to dock or enter a wormhole. Click the view if the mouse is not captured, and press <strong>Esc</strong> to release it.</p></div>`
+      ? `<div class="help-card"><h3>Current Phase</h3><p>Ship flight: use <strong>C</strong> to cycle cockpit, chase, and far-chase cameras. Fly with <strong>W/S</strong>, trim with <strong>A/D</strong>, rise with <strong>Space</strong>, descend with <strong>Shift</strong>, and press <strong>E</strong> to dock or enter a wormhole. The radar tracks your next target and nearby hazards.</p></div>`
       : this.isOnFootState()
-        ? `<div class="help-card"><h3>Current Phase</h3><p>Courier first-person: click the view to capture the mouse, use <strong>WASD</strong> to walk, look with the mouse, and press <strong>E</strong> when you are fully inside the highlighted interaction zone.</p></div>`
+        ? `<div class="help-card"><h3>Current Phase</h3><p>Courier first-person: click the view to capture the mouse, use <strong>WASD</strong> to walk, follow the floor guides and radar, and press <strong>E</strong> when you are fully inside the highlighted interaction zone.</p></div>`
         : `<div class="help-card"><h3>Current Phase</h3><p>Use the command card to begin or continue the current contract. Once you are in gameplay, click the view to capture the mouse and press <strong>H</strong> anytime to reopen this help panel.</p></div>`;
 
     return `
       ${stateCard}
       <div class="help-card">
         <h3>Core Controls</h3>
-        <p><strong>WASD</strong> move or fly, <strong>Mouse</strong> look, <strong>E</strong> interact, dock, board, and use wormholes, <strong>H</strong> or <strong>F1</strong> opens help, and <strong>Esc</strong> releases the mouse.</p>
+        <p><strong>WASD</strong> move or fly, <strong>Mouse</strong> look, <strong>Space</strong> rise, <strong>Shift</strong> descend, <strong>C</strong> cycle ship cameras, <strong>E</strong> interact, dock, board, and use wormholes, <strong>H</strong> or <strong>F1</strong> opens help, and <strong>Esc</strong> releases the mouse.</p>
       </div>
       <div class="help-card">
         <h3>How To Start</h3>
@@ -1137,7 +1322,7 @@ export class Game {
       </div>
       <div class="help-card">
         <h3>Route Rules</h3>
-        <p>Collisions fail the route. Fuel drains during launch and flight. You must dock at the station before the destination gate counts as a successful delivery.</p>
+        <p>Collisions fail the route. Fuel drains during launch and flight. Follow the radar and blue station beacon first, because the destination gate only counts after the station refuel is complete.</p>
       </div>
       <div class="help-card">
         <h3>Wormholes And Delivery</h3>
@@ -1161,7 +1346,7 @@ export class Game {
     const handling = safeInteger(upgrades.handling);
     return {
       cruiseSpeed: 96 + engine * 10,
-      maxFuel: Math.max(1, 45 + fuelTank * 12),
+      maxFuel: Math.max(1, 72 + fuelTank * 16),
       handlingFactor: 1 + handling * 0.1,
       dockingAssist: durability * 0.24 + handling * 0.1,
       wormholeAssist: engine * 0.13 + handling * 0.1

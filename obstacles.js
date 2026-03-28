@@ -22,6 +22,7 @@ export class ObstacleManager {
     this.station = null;
     this.gate = null;
     this.wormhole = null;
+    this.navigationBeacons = {};
     this.segment = null;
     this.segmentWorld = null;
   }
@@ -56,6 +57,7 @@ export class ObstacleManager {
     this.station = null;
     this.gate = null;
     this.wormhole = null;
+    this.navigationBeacons = {};
 
     this.clearGroup(this.departureGroup);
     this.clearGroup(this.flightGroup);
@@ -198,6 +200,7 @@ export class ObstacleManager {
 
     this.addZoneFrame(this.departureGroup, this.segmentWorld.departure.cargoZone, 0xfbbf24, "Cargo");
     this.addZoneFrame(this.departureGroup, this.segmentWorld.departure.boardingZone, 0x67e8f9, "Ramp");
+    this.addDepartureRouteGuides();
 
     this.createPortStructures();
     this.createPadLights();
@@ -259,6 +262,38 @@ export class ObstacleManager {
     this.departureGroup.add(beacon);
   }
 
+  addDepartureRouteGuides() {
+    const THREE = this.THREE;
+    const lineMaterial = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.18 });
+    const routeGuides = [
+      { x: -20, z: 18, width: 26, depth: 2.8, color: 0xfbbf24 },
+      { x: -2, z: 14, width: 20, depth: 2.2, color: 0xfbbf24 },
+      { x: 10, z: 4, width: 18, depth: 2, color: 0x67e8f9 },
+      { x: 24, z: 2, width: 18, depth: 1.6, color: 0x67e8f9 },
+      { x: 46, z: 0, width: 32, depth: 1.2, color: 0x38bdf8 },
+      { x: 78, z: 0, width: 34, depth: 1.2, color: 0x38bdf8 },
+      { x: 110, z: 0, width: 28, depth: 1.2, color: 0x38bdf8 }
+    ];
+
+    routeGuides.forEach((guide) => {
+      const strip = new THREE.Mesh(
+        new THREE.BoxGeometry(guide.width, 0.04, guide.depth),
+        new THREE.MeshBasicMaterial({ color: guide.color, transparent: true, opacity: 0.24 })
+      );
+      strip.position.set(guide.x, 0.13, guide.z);
+      this.departureGroup.add(strip);
+    });
+
+    for (let index = 0; index < 7; index += 1) {
+      const guideLight = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.18, 0.18, 10),
+        lineMaterial
+      );
+      guideLight.position.set(-30 + index * 12, 0.22, 16 - index * 2.2);
+      this.departureGroup.add(guideLight);
+    }
+  }
+
   createPadLights() {
     const THREE = this.THREE;
     const glowMaterial = new THREE.MeshBasicMaterial({ color: 0x67e8f9 });
@@ -286,7 +321,7 @@ export class ObstacleManager {
 
     const starGeometryNear = new THREE.BufferGeometry();
     const starPositionsNear = [];
-    for (let index = 0; index < 1200; index += 1) {
+    for (let index = 0; index < 1600; index += 1) {
       starPositionsNear.push(
         Math.random() * (this.segmentWorld.routeLength + 400),
         (Math.random() - 0.5) * 260,
@@ -303,18 +338,18 @@ export class ObstacleManager {
 
     const starGeometryFar = new THREE.BufferGeometry();
     const starPositionsFar = [];
-    for (let index = 0; index < 800; index += 1) {
+    for (let index = 0; index < 1900; index += 1) {
       starPositionsFar.push(
         Math.random() * (this.segmentWorld.routeLength + 400),
-        (Math.random() - 0.5) * 520,
-        (Math.random() - 0.5) * 420
+        (Math.random() - 0.5) * 640,
+        (Math.random() - 0.5) * 620
       );
     }
     starGeometryFar.setAttribute("position", new THREE.Float32BufferAttribute(starPositionsFar, 3));
     this.flightGroup.add(
       new THREE.Points(
         starGeometryFar,
-        new THREE.PointsMaterial({ color: 0x93c5fd, size: 1.2, sizeAttenuation: true, transparent: true, opacity: 0.8 })
+        new THREE.PointsMaterial({ color: 0x93c5fd, size: 0.86, sizeAttenuation: true, transparent: true, opacity: 0.84 })
       )
     );
 
@@ -364,7 +399,7 @@ export class ObstacleManager {
         const t = field.count === 1 ? 0.5 : index / (field.count - 1);
         const x = (field.startX + (field.endX - field.startX) * t + this.offsetNoise(index + field.startX, 180)) * this.routeScale;
         const z = this.toRouteZ(field.top + (field.bottom - field.top) * this.normalizedNoise(index + field.endX, 0.65));
-        const radius = 2.8 + this.normalizedNoise(index + field.endX, 0.82) * 3.8;
+        const radius = 1.9 + this.normalizedNoise(index + field.endX, 0.82) * 2.6;
         const mesh = new THREE.Mesh(
           new THREE.IcosahedronGeometry(radius, 0),
           new THREE.MeshStandardMaterial({ color: 0x9aa8bc, roughness: 0.98, metalness: 0.06 })
@@ -377,7 +412,7 @@ export class ObstacleManager {
     });
 
     this.segment.movingAsteroids.forEach((asteroid) => {
-      const radius = asteroid.radius * 0.18;
+      const radius = asteroid.radius * 0.135;
       const mesh = new THREE.Mesh(
         new THREE.DodecahedronGeometry(radius, 0),
         new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.95, metalness: 0.06 })
@@ -437,13 +472,22 @@ export class ObstacleManager {
 
     this.station = this.createStationObject();
     this.flightGroup.add(this.station.mesh);
+    this.navigationBeacons.station = this.createNavigationBeacon("Station", 0x38bdf8, 26);
+    this.navigationBeacons.station.position.set(this.station.x, 18, this.station.z);
+    this.flightGroup.add(this.navigationBeacons.station);
 
     this.gate = this.createGateObject();
     this.flightGroup.add(this.gate.mesh);
+    this.navigationBeacons.gate = this.createNavigationBeacon("Gate", 0x4ade80, 28);
+    this.navigationBeacons.gate.position.set(this.gate.x, 22, this.gate.z);
+    this.flightGroup.add(this.navigationBeacons.gate);
 
     if (this.segmentWorld.wormhole) {
       this.wormhole = this.createWormholeObject();
       this.flightGroup.add(this.wormhole.mesh);
+      this.navigationBeacons.wormhole = this.createNavigationBeacon("Wormhole", 0xf472b6, 26);
+      this.navigationBeacons.wormhole.position.set(this.wormhole.x, 20, this.wormhole.z);
+      this.flightGroup.add(this.navigationBeacons.wormhole);
     }
   }
 
@@ -583,6 +627,26 @@ export class ObstacleManager {
     return { ...this.segmentWorld.wormhole, mesh: group };
   }
 
+  createNavigationBeacon(label, color, height) {
+    const THREE = this.THREE;
+    const group = new THREE.Group();
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.34, 0.7, height, 12),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3 })
+    );
+    beam.position.y = height / 2;
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(2.4, 0.22, 8, 24),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 2.2;
+    const sprite = this.createLabelSprite(label, color);
+    sprite.position.y = height + 3.8;
+    group.add(beam, ring, sprite);
+    return group;
+  }
+
   addZoneFrame(group, zone, color, label) {
     const THREE = this.THREE;
     const width = zone.maxX - zone.minX;
@@ -658,11 +722,19 @@ export class ObstacleManager {
       this.wormhole.mesh.rotation.z += deltaTime * 1.1;
       this.wormhole.mesh.visible = !state.wormholeUsed;
     }
+
+    Object.values(this.navigationBeacons).forEach((beacon, index) => {
+      if (!beacon) {
+        return;
+      }
+      beacon.children[1].rotation.z += deltaTime * (0.45 + index * 0.08);
+      beacon.children[0].material.opacity = 0.2 + Math.sin(state.time * 2 + index) * 0.06;
+    });
   }
 
   setMode(mode) {
     this.departureGroup.visible = mode === "preview" || mode === "boarding" || mode === "launch";
-    this.flightGroup.visible = mode === "flight" || mode === "wormhole";
+    this.flightGroup.visible = mode === "flight" || mode === "wormhole" || mode === "launch";
     this.arrivalGroup.visible = mode === "arrival";
   }
 
@@ -679,6 +751,7 @@ export class ObstacleManager {
   }
 
   getDepartureForce(ship, progress = 0) {
+    const targetY = 8 + progress * this.segmentWorld.departure.departureLane.targetY;
     return {
       force: {
         x: 18 * (1 - progress * 0.3),
@@ -686,7 +759,9 @@ export class ObstacleManager {
         z: -ship.position.z * 0.38
       },
       forwardAssist: 20 * (1 - progress * 0.55),
-      stabilizeZ: 0.55
+      stabilizeZ: 0.55,
+      stabilizeY: 0.42,
+      targetY
     };
   }
 
@@ -773,6 +848,29 @@ export class ObstacleManager {
 
   getRouteLength() {
     return this.segmentWorld.routeLength;
+  }
+
+  getNavigationPoints(wormholeUsed = false) {
+    return {
+      station: { x: this.station.x, z: this.station.z },
+      gate: { x: this.gate.x, z: this.gate.z },
+      wormhole: this.wormhole && !wormholeUsed ? { x: this.wormhole.x, z: this.wormhole.z } : null
+    };
+  }
+
+  getRadarContacts(ship, maxDistance = 95) {
+    return this.objects
+      .filter((object) => {
+        const dx = object.mesh.position.x - ship.position.x;
+        const dz = object.mesh.position.z - ship.position.z;
+        return Math.hypot(dx, dz) <= maxDistance;
+      })
+      .slice(0, 18)
+      .map((object) => ({
+        x: object.mesh.position.x,
+        z: object.mesh.position.z,
+        kind: object.kind
+      }));
   }
 
   getDepartureWorld() {

@@ -54,6 +54,16 @@
               <div id="progressFill" class="meter-fill progress-fill"></div>
             </div>
           </div>
+          <div class="hud-meta">
+            <div>
+              <span class="hud-label">Camera</span>
+              <strong id="cameraMode">Cockpit</strong>
+            </div>
+            <div>
+              <span class="hud-label">Target</span>
+              <strong id="targetLabel">Station</strong>
+            </div>
+          </div>
         </div>
 
         <div class="hud-panel hud-objective">
@@ -64,6 +74,14 @@
         <div class="hud-panel hud-prompt">
           <p class="hud-label">Prompt</p>
           <p id="prompt">Stand by.</p>
+        </div>
+
+        <div class="hud-panel hud-minimap">
+          <div class="minimap-head">
+            <span class="hud-label">Route Radar</span>
+            <strong id="minimapMode">Dock Lane</strong>
+          </div>
+          <canvas id="minimapCanvas" width="180" height="180" aria-label="Route minimap"></canvas>
         </div>
       </section>
 

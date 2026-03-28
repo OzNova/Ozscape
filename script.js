@@ -33,6 +33,10 @@ const controls = {
   fuelValueEl: document.getElementById("fuelValue"),
   progressFillEl: document.getElementById("progressFill"),
   progressValueEl: document.getElementById("progressValue"),
+  cameraModeEl: document.getElementById("cameraMode"),
+  targetLabelEl: document.getElementById("targetLabel"),
+  minimapModeEl: document.getElementById("minimapMode"),
+  minimapCanvas: document.getElementById("minimapCanvas"),
   startButton: document.getElementById("startButton"),
   restartButton: document.getElementById("restartButton")
 };
