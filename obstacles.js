@@ -73,8 +73,8 @@ export class ObstacleManager {
       planetLabel: segment.departure.planetLabel,
       characterSpawn: new this.THREE.Vector3(-22, 1.2, 18),
       shipSpawn: new this.THREE.Vector3(18, 3.8, -4),
-      cargoZone: { minX: -34, maxX: -16, minZ: 8, maxZ: 26 },
-      boardingZone: { minX: 9, maxX: 24, minZ: -8, maxZ: 4 },
+      cargoZone: { minX: -38, maxX: -14, minZ: 6, maxZ: 28 },
+      boardingZone: { minX: 7, maxX: 26, minZ: -10, maxZ: 5 },
       departureLane: {
         startX: 18,
         clearX: 122,
@@ -130,7 +130,7 @@ export class ObstacleManager {
     const THREE = this.THREE;
 
     const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(150, 72),
+      new THREE.CircleGeometry(190, 72),
       new THREE.MeshStandardMaterial({ color: 0x0c1322, roughness: 1, metalness: 0.04 })
     );
     ground.rotation.x = -Math.PI / 2;
@@ -155,6 +155,14 @@ export class ObstacleManager {
     );
     atmosphere.position.copy(planet.position);
     this.departureGroup.add(atmosphere);
+
+    const haze = new THREE.Mesh(
+      new THREE.CircleGeometry(180, 48),
+      new THREE.MeshBasicMaterial({ color: 0x1d4ed8, transparent: true, opacity: 0.09 })
+    );
+    haze.rotation.x = -Math.PI / 2;
+    haze.position.set(30, 0.2, 0);
+    this.departureGroup.add(haze);
 
     const horizon = new THREE.Mesh(
       new THREE.CylinderGeometry(160, 180, 10, 48, 1, true),
@@ -193,6 +201,23 @@ export class ObstacleManager {
 
     this.createPortStructures();
     this.createPadLights();
+
+    const railMaterial = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
+    for (let index = 0; index < 6; index += 1) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(16, 0.22, 0.22), railMaterial);
+      rail.position.set(-24 + index * 18, 0.5, -14);
+      this.departureGroup.add(rail);
+      const oppositeRail = rail.clone();
+      oppositeRail.position.z = 14;
+      this.departureGroup.add(oppositeRail);
+    }
+
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(12, 24, 24, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, emissive: 0x082f49, emissiveIntensity: 0.2, transparent: true, opacity: 0.94 })
+    );
+    dome.position.set(-54, 0, 20);
+    this.departureGroup.add(dome);
   }
 
   createPortStructures() {
@@ -292,6 +317,20 @@ export class ObstacleManager {
         new THREE.PointsMaterial({ color: 0x93c5fd, size: 1.2, sizeAttenuation: true, transparent: true, opacity: 0.8 })
       )
     );
+
+    const nebula = new THREE.Mesh(
+      new THREE.SphereGeometry(140, 32, 32),
+      new THREE.MeshBasicMaterial({ color: 0x1d4ed8, transparent: true, opacity: 0.06 })
+    );
+    nebula.position.set(this.segmentWorld.routeLength * 0.38, 90, -120);
+    this.flightGroup.add(nebula);
+
+    const nebula2 = new THREE.Mesh(
+      new THREE.SphereGeometry(110, 28, 28),
+      new THREE.MeshBasicMaterial({ color: 0x7c3aed, transparent: true, opacity: 0.05 })
+    );
+    nebula2.position.set(this.segmentWorld.routeLength * 0.72, -60, 130);
+    this.flightGroup.add(nebula2);
 
     this.segment.planets.forEach((planet, index) => {
       const radius = Math.max(12, planet.radius * 0.1);
@@ -443,6 +482,13 @@ export class ObstacleManager {
     officeLight.position.set(30, 5, 7.1);
     this.arrivalGroup.add(officeLight);
 
+    const street = new THREE.Mesh(
+      new THREE.BoxGeometry(58, 0.05, 12),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.08 })
+    );
+    street.position.set(6, 0.08, 2);
+    this.arrivalGroup.add(street);
+
     const planet = new THREE.Mesh(
       new THREE.SphereGeometry(110, 42, 42),
       new THREE.MeshStandardMaterial({ color: 0x1d4ed8, emissive: 0x1e3a8a, emissiveIntensity: 0.7 })
@@ -473,7 +519,13 @@ export class ObstacleManager {
     );
     dock.position.set(this.segmentWorld.station.zoneDepth / 2 - 4, 0, 0);
 
-    group.add(ring, hub, dock);
+    const armGeometry = new THREE.BoxGeometry(1.2, 12, 1.2);
+    const armLeft = new THREE.Mesh(armGeometry, new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.84 }));
+    armLeft.position.set(-this.segmentWorld.station.bodyRadius * 0.9, 0, -this.segmentWorld.station.bodyRadius * 0.8);
+    const armRight = armLeft.clone();
+    armRight.position.z = this.segmentWorld.station.bodyRadius * 0.8;
+
+    group.add(ring, hub, dock, armLeft, armRight);
     group.position.set(this.segmentWorld.station.x, 0, this.segmentWorld.station.z);
 
     return { ...this.segmentWorld.station, mesh: group };
@@ -519,7 +571,13 @@ export class ObstacleManager {
     );
     core.rotation.z = Math.PI / 2;
 
-    group.add(outer, inner, core);
+    const halo = new THREE.Mesh(
+      new THREE.TorusGeometry(this.segmentWorld.wormhole.radius * 1.18, 1.2, 12, 42),
+      new THREE.MeshBasicMaterial({ color: 0xe879f9, transparent: true, opacity: 0.22 })
+    );
+    halo.rotation.y = Math.PI / 2;
+
+    group.add(outer, inner, core, halo);
     group.position.set(this.segmentWorld.wormhole.x, 6, this.segmentWorld.wormhole.z);
 
     return { ...this.segmentWorld.wormhole, mesh: group };
@@ -646,7 +704,11 @@ export class ObstacleManager {
     const dz = Math.abs(ship.position.z - this.station.z);
     const inZone = dx <= this.station.zoneDepth / 2 && dz <= this.station.zoneHeight / 2;
     const alignment = Math.max(0, 1 - dz / Math.max(this.station.zoneHeight / 2, 1));
-    return { inZone, alignment };
+    return {
+      inZone,
+      nearZone: dx <= this.station.zoneDepth * 0.85 && dz <= this.station.zoneHeight * 0.85,
+      alignment
+    };
   }
 
   getGateInfo(ship) {
@@ -697,13 +759,14 @@ export class ObstacleManager {
 
   getWormholeInfo(ship, used) {
     if (!this.wormhole || used) {
-      return { available: false, inZone: false, alignment: 0 };
+      return { available: false, inZone: false, nearZone: false, alignment: 0 };
     }
     const dx = Math.abs(this.wormhole.x - ship.position.x);
     const dz = Math.abs(this.wormhole.z - ship.position.z);
     return {
       available: true,
       inZone: dx <= this.wormhole.captureDepth / 2 && dz <= this.wormhole.captureHeight / 2,
+      nearZone: dx <= this.wormhole.captureDepth && dz <= this.wormhole.captureHeight,
       alignment: Math.max(0, 1 - dz / Math.max(this.wormhole.captureHeight / 2, 1))
     };
   }
@@ -721,12 +784,19 @@ export class ObstacleManager {
   }
 
   getZoneInfo(position, zone) {
+    const centerX = (zone.minX + zone.maxX) / 2;
+    const centerZ = (zone.minZ + zone.maxZ) / 2;
+    const dx = centerX - position.x;
+    const dz = centerZ - position.z;
+    const distance = Math.hypot(dx, dz);
     return {
       inZone:
         position.x >= zone.minX &&
         position.x <= zone.maxX &&
         position.z >= zone.minZ &&
-        position.z <= zone.maxZ
+        position.z <= zone.maxZ,
+      nearZone: distance <= Math.max(zone.maxX - zone.minX, zone.maxZ - zone.minZ) * 0.9,
+      distance
     };
   }
 

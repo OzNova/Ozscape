@@ -30,6 +30,7 @@
             <span class="meta-label">Credits</span>
             <span id="score">0</span>
           </div>
+          <button id="helpButton" class="help-button" type="button">Help</button>
         </div>
       </header>
 
@@ -79,6 +80,21 @@
           <button id="restartButton" type="button">Reset</button>
         </div>
       </section>
+
+      <section id="helpPanel" class="help-panel hidden" aria-label="Help panel">
+        <div class="help-panel-head">
+          <div>
+            <p class="eyebrow">Pilot Help</p>
+            <h2 id="helpTitle">Ozscape Controls</h2>
+          </div>
+          <button id="closeHelpButton" class="help-close" type="button">Close</button>
+        </div>
+        <div id="helpBody" class="help-body"></div>
+      </section>
+    </div>
+
+    <div id="reticle" class="reticle hidden" aria-hidden="true">
+      <span class="reticle-ring"></span>
     </div>
 
     <script type="module" src="./script.js"></script>

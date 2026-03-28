@@ -15,12 +15,18 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const controls = {
   panelCard: document.getElementById("panelCard"),
   hud: document.getElementById("hud"),
+  reticle: document.getElementById("reticle"),
   titleEl: document.getElementById("panelTitle"),
   copyEl: document.getElementById("panelCopy"),
   statusLabel: document.getElementById("status"),
   scoreLabel: document.getElementById("score"),
   objectiveLabel: document.getElementById("objective"),
   promptLabel: document.getElementById("prompt"),
+  helpPanel: document.getElementById("helpPanel"),
+  helpTitle: document.getElementById("helpTitle"),
+  helpBody: document.getElementById("helpBody"),
+  helpButton: document.getElementById("helpButton"),
+  closeHelpButton: document.getElementById("closeHelpButton"),
   detailsEl: document.getElementById("details"),
   upgradesEl: document.getElementById("upgrades"),
   fuelFillEl: document.getElementById("fuelFill"),
@@ -59,6 +65,9 @@ controls.restartButton.addEventListener("click", async () => {
   await requestFullscreen();
   game.handleSecondaryAction();
 });
+
+controls.helpButton.addEventListener("click", () => game.toggleHelp());
+controls.closeHelpButton.addEventListener("click", () => game.toggleHelp(false));
 
 window.addEventListener("resize", () => game.handleResize());
 game.handleResize();
