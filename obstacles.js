@@ -12,8 +12,9 @@ export class ObstacleManager {
     this.root.add(this.departureGroup, this.flightGroup, this.arrivalGroup);
     this.scene.add(this.root);
 
-    this.routeScale = 0.2;
-    this.depthScale = 0.18;
+    this.routeScale = 0.24;
+    this.routeDistanceScale = 2.15;
+    this.depthScale = 0.22;
 
     this.objects = [];
     this.gravityZones = [];
@@ -70,33 +71,38 @@ export class ObstacleManager {
   }
 
   createSegmentWorld(segment) {
+    const scaleX = (value) => value * this.routeScale * this.routeDistanceScale;
     const departure = {
       portLabel: segment.departure.portLabel,
       planetLabel: segment.departure.planetLabel,
-      characterSpawn: new this.THREE.Vector3(-22, 1.2, 18),
-      shipSpawn: new this.THREE.Vector3(18, 3.8, -4),
-      cargoZone: { minX: -38, maxX: -14, minZ: 6, maxZ: 28 },
-      boardingZone: { minX: 7, maxX: 26, minZ: -10, maxZ: 5 },
+      characterSpawn: new this.THREE.Vector3(-44, 1.2, 28),
+      shipSpawn: new this.THREE.Vector3(36, 3.8, -6),
+      cargoZone: { minX: -70, maxX: -28, minZ: 12, maxZ: 42 },
+      boardingZone: { minX: 22, maxX: 48, minZ: -14, maxZ: 6 },
       departureLane: {
-        startX: 18,
-        clearX: 122,
-        minZ: -10,
-        maxZ: 10,
-        targetY: 18
+        startX: 36,
+        clearX: 320,
+        spaceBreakX: 560,
+        minZ: -22,
+        maxZ: 22,
+        lowerY: 28,
+        upperY: 76,
+        targetY: 132
       }
     };
 
-    const routeLength = segment.length * this.routeScale;
-    const stationX = segment.station.worldX * this.routeScale;
-    const gateX = segment.gate.worldX * this.routeScale;
+    const routeStartX = departure.departureLane.spaceBreakX + 120;
+    const routeLength = routeStartX + scaleX(segment.length);
+    const stationX = routeStartX + scaleX(segment.station.worldX);
+    const gateX = routeStartX + scaleX(segment.gate.worldX);
     const wormhole = segment.wormhole
       ? {
-          x: segment.wormhole.worldX * this.routeScale,
+          x: routeStartX + scaleX(segment.wormhole.worldX),
           z: this.toRouteZ(segment.wormhole.worldY),
           radius: segment.wormhole.radius * 0.17,
           captureDepth: segment.wormhole.captureWidth * 0.12,
           captureHeight: segment.wormhole.captureHeight * 0.08,
-          exitProgress: segment.wormhole.exitProgress * this.routeScale,
+          exitProgress: routeStartX + scaleX(segment.wormhole.exitProgress),
           fuelBonus: segment.wormhole.fuelBonus,
           rewardBonus: segment.wormhole.rewardBonus,
           turbulenceDuration: segment.wormhole.turbulenceDuration
@@ -105,6 +111,7 @@ export class ObstacleManager {
 
     return {
       departure,
+      routeStartX,
       routeLength,
       station: {
         x: stationX,
@@ -132,68 +139,68 @@ export class ObstacleManager {
     const THREE = this.THREE;
 
     const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(190, 72),
-      new THREE.MeshStandardMaterial({ color: 0x0c1322, roughness: 1, metalness: 0.04 })
+      new THREE.CircleGeometry(360, 96),
+      new THREE.MeshStandardMaterial({ color: 0x0b1324, roughness: 1, metalness: 0.04 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     this.departureGroup.add(ground);
 
     const planet = new THREE.Mesh(
-      new THREE.SphereGeometry(120, 48, 48),
+      new THREE.SphereGeometry(240, 60, 60),
       new THREE.MeshStandardMaterial({
-        color: 0x3b82f6,
+        color: 0x60a5fa,
         emissive: 0x1d4ed8,
-        emissiveIntensity: 0.85,
+        emissiveIntensity: 0.95,
         roughness: 1
       })
     );
-    planet.position.set(170, 90, -185);
+    planet.position.set(360, 118, -430);
     this.departureGroup.add(planet);
 
     const atmosphere = new THREE.Mesh(
-      new THREE.SphereGeometry(126, 48, 48),
-      new THREE.MeshBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.12 })
+      new THREE.SphereGeometry(258, 60, 60),
+      new THREE.MeshBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.16 })
     );
     atmosphere.position.copy(planet.position);
     this.departureGroup.add(atmosphere);
 
     const haze = new THREE.Mesh(
-      new THREE.CircleGeometry(180, 48),
-      new THREE.MeshBasicMaterial({ color: 0x1d4ed8, transparent: true, opacity: 0.09 })
+      new THREE.CircleGeometry(340, 64),
+      new THREE.MeshBasicMaterial({ color: 0x2563eb, transparent: true, opacity: 0.11 })
     );
     haze.rotation.x = -Math.PI / 2;
-    haze.position.set(30, 0.2, 0);
+    haze.position.set(60, 0.2, 0);
     this.departureGroup.add(haze);
 
     const horizon = new THREE.Mesh(
-      new THREE.CylinderGeometry(160, 180, 10, 48, 1, true),
+      new THREE.CylinderGeometry(310, 360, 18, 72, 1, true),
       new THREE.MeshStandardMaterial({ color: 0x14233d, roughness: 1, metalness: 0.05 })
     );
-    horizon.position.set(10, -4, 0);
+    horizon.position.set(30, -8, 0);
     this.departureGroup.add(horizon);
 
     const pad = new THREE.Mesh(
-      new THREE.BoxGeometry(54, 1.5, 26),
+      new THREE.BoxGeometry(92, 1.8, 38),
       new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.9, metalness: 0.1 })
     );
-    pad.position.set(10, 0.8, -2);
+    pad.position.set(28, 0.9, -4);
     pad.receiveShadow = true;
     this.departureGroup.add(pad);
 
     const runway = new THREE.Mesh(
-      new THREE.BoxGeometry(130, 0.08, 20),
+      new THREE.BoxGeometry(420, 0.08, 28),
       new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.14 })
     );
-    runway.position.set(76, 0.12, 0);
+    runway.position.set(210, 0.12, 0);
     this.departureGroup.add(runway);
 
     const ramp = new THREE.Mesh(
-      new THREE.BoxGeometry(8, 0.4, 5),
+      new THREE.BoxGeometry(12, 0.5, 6),
       new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.9 })
     );
     ramp.rotation.z = -0.2;
-    ramp.position.set(11.5, 1.6, -1.5);
+    ramp.position.set(24.5, 1.7, -2.2);
     ramp.castShadow = true;
     ramp.receiveShadow = true;
     this.departureGroup.add(ramp);
@@ -204,22 +211,23 @@ export class ObstacleManager {
 
     this.createPortStructures();
     this.createPadLights();
+    this.createAtmosphereBands();
 
     const railMaterial = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
     for (let index = 0; index < 6; index += 1) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(16, 0.22, 0.22), railMaterial);
-      rail.position.set(-24 + index * 18, 0.5, -14);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(28, 0.22, 0.22), railMaterial);
+      rail.position.set(-44 + index * 28, 0.5, -18);
       this.departureGroup.add(rail);
       const oppositeRail = rail.clone();
-      oppositeRail.position.z = 14;
+      oppositeRail.position.z = 18;
       this.departureGroup.add(oppositeRail);
     }
 
     const dome = new THREE.Mesh(
-      new THREE.SphereGeometry(12, 24, 24, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.SphereGeometry(20, 24, 24, 0, Math.PI * 2, 0, Math.PI / 2),
       new THREE.MeshStandardMaterial({ color: 0x1e293b, emissive: 0x082f49, emissiveIntensity: 0.2, transparent: true, opacity: 0.94 })
     );
-    dome.position.set(-54, 0, 20);
+    dome.position.set(-110, 0, 28);
     this.departureGroup.add(dome);
   }
 
@@ -229,10 +237,11 @@ export class ObstacleManager {
     const glowMaterial = new THREE.MeshStandardMaterial({ color: 0x67e8f9, emissive: 0x22d3ee, emissiveIntensity: 0.6 });
 
     [
-      [-56, 10, -22, 18, 20, 20],
-      [-36, 8, -4, 18, 16, 12],
-      [56, 14, 18, 24, 28, 18],
-      [86, 7, -24, 18, 14, 14]
+      [-116, 14, -34, 28, 28, 28],
+      [-68, 10, -8, 22, 20, 16],
+      [88, 18, 24, 30, 34, 22],
+      [148, 9, -30, 22, 18, 16],
+      [198, 12, 20, 26, 24, 18]
     ].forEach(([x, y, z, w, h, d]) => {
       const building = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), structureMaterial);
       building.position.set(x, h / 2, z);
@@ -243,22 +252,22 @@ export class ObstacleManager {
 
     for (let index = 0; index < 9; index += 1) {
       const crate = new THREE.Mesh(
-        new THREE.BoxGeometry(3.2, 3.2, 3.2),
+        new THREE.BoxGeometry(4.4, 4.4, 4.4),
         new THREE.MeshStandardMaterial({ color: index % 2 === 0 ? 0x334155 : 0x475569, roughness: 0.9 })
       );
-      crate.position.set(-32 + (index % 3) * 4.2, 1.7, 11 + Math.floor(index / 3) * 4.2);
+      crate.position.set(-58 + (index % 3) * 6.2, 2.3, 16 + Math.floor(index / 3) * 6.2);
       crate.castShadow = true;
       crate.receiveShadow = true;
       this.departureGroup.add(crate);
     }
 
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.8, 18, 10), structureMaterial);
-    tower.position.set(30, 9, -18);
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.6, 28, 10), structureMaterial);
+    tower.position.set(52, 14, -28);
     tower.castShadow = true;
     this.departureGroup.add(tower);
 
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 12), glowMaterial);
-    beacon.position.set(30, 18.5, -18);
+    beacon.position.set(52, 28.5, -28);
     this.departureGroup.add(beacon);
   }
 
@@ -266,13 +275,13 @@ export class ObstacleManager {
     const THREE = this.THREE;
     const lineMaterial = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.18 });
     const routeGuides = [
-      { x: -20, z: 18, width: 26, depth: 2.8, color: 0xfbbf24 },
-      { x: -2, z: 14, width: 20, depth: 2.2, color: 0xfbbf24 },
-      { x: 10, z: 4, width: 18, depth: 2, color: 0x67e8f9 },
-      { x: 24, z: 2, width: 18, depth: 1.6, color: 0x67e8f9 },
-      { x: 46, z: 0, width: 32, depth: 1.2, color: 0x38bdf8 },
-      { x: 78, z: 0, width: 34, depth: 1.2, color: 0x38bdf8 },
-      { x: 110, z: 0, width: 28, depth: 1.2, color: 0x38bdf8 }
+      { x: -46, z: 26, width: 34, depth: 3.6, color: 0xfbbf24 },
+      { x: -12, z: 18, width: 28, depth: 2.8, color: 0xfbbf24 },
+      { x: 24, z: 6, width: 24, depth: 2.4, color: 0x67e8f9 },
+      { x: 56, z: 2, width: 22, depth: 2, color: 0x67e8f9 },
+      { x: 120, z: 0, width: 60, depth: 1.6, color: 0x38bdf8 },
+      { x: 220, z: 0, width: 74, depth: 1.6, color: 0x38bdf8 },
+      { x: 340, z: 0, width: 88, depth: 1.6, color: 0x38bdf8 }
     ];
 
     routeGuides.forEach((guide) => {
@@ -289,24 +298,44 @@ export class ObstacleManager {
         new THREE.CylinderGeometry(0.18, 0.18, 0.18, 10),
         lineMaterial
       );
-      guideLight.position.set(-30 + index * 12, 0.22, 16 - index * 2.2);
+      guideLight.position.set(-58 + index * 34, 0.22, 24 - index * 4);
       this.departureGroup.add(guideLight);
     }
+  }
+
+  createAtmosphereBands() {
+    const THREE = this.THREE;
+    const bandSpecs = [
+      { x: 120, y: 18, z: 0, w: 180, h: 10, d: 72, opacity: 0.12, color: 0xbfe2ff },
+      { x: 240, y: 54, z: 0, w: 220, h: 14, d: 92, opacity: 0.09, color: 0xdbeafe },
+      { x: 390, y: 96, z: 0, w: 240, h: 16, d: 108, opacity: 0.06, color: 0xe0f2fe }
+    ];
+
+    bandSpecs.forEach((band) => {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(band.w, band.h, band.d),
+        new THREE.MeshBasicMaterial({ color: band.color, transparent: true, opacity: band.opacity })
+      );
+      mesh.position.set(band.x, band.y, band.z);
+      this.departureGroup.add(mesh);
+    });
   }
 
   createPadLights() {
     const THREE = this.THREE;
     const glowMaterial = new THREE.MeshBasicMaterial({ color: 0x67e8f9 });
     const positions = [
-      [-12, 0.3, -10],
-      [0, 0.3, -10],
-      [12, 0.3, -10],
-      [-12, 0.3, 10],
-      [0, 0.3, 10],
-      [12, 0.3, 10],
-      [36, 0.3, 0],
-      [56, 0.3, 0],
-      [76, 0.3, 0]
+      [-24, 0.3, -14],
+      [0, 0.3, -14],
+      [24, 0.3, -14],
+      [-24, 0.3, 14],
+      [0, 0.3, 14],
+      [24, 0.3, 14],
+      [72, 0.3, 0],
+      [118, 0.3, 0],
+      [164, 0.3, 0],
+      [220, 0.3, 0],
+      [286, 0.3, 0]
     ];
 
     positions.forEach(([x, y, z]) => {
@@ -323,7 +352,7 @@ export class ObstacleManager {
     const starPositionsNear = [];
     for (let index = 0; index < 1600; index += 1) {
       starPositionsNear.push(
-        Math.random() * (this.segmentWorld.routeLength + 400),
+        Math.random() * (this.segmentWorld.routeLength + 600),
         (Math.random() - 0.5) * 260,
         (Math.random() - 0.5) * 240
       );
@@ -340,7 +369,7 @@ export class ObstacleManager {
     const starPositionsFar = [];
     for (let index = 0; index < 1900; index += 1) {
       starPositionsFar.push(
-        Math.random() * (this.segmentWorld.routeLength + 400),
+        Math.random() * (this.segmentWorld.routeLength + 900),
         (Math.random() - 0.5) * 640,
         (Math.random() - 0.5) * 620
       );
@@ -368,7 +397,7 @@ export class ObstacleManager {
     this.flightGroup.add(nebula2);
 
     this.segment.planets.forEach((planet, index) => {
-      const radius = Math.max(12, planet.radius * 0.1);
+      const radius = Math.max(16, planet.radius * 0.12);
       const sphere = new THREE.Mesh(
         new THREE.SphereGeometry(radius, 36, 36),
         new THREE.MeshStandardMaterial({
@@ -379,9 +408,9 @@ export class ObstacleManager {
         })
       );
       sphere.position.set(
-        planet.worldX * this.routeScale,
-        52 + radius * 0.25 + index * 8,
-        this.toRouteZ(planet.worldY) * 1.55
+        this.segmentWorld.routeStartX + planet.worldX * this.routeScale * this.routeDistanceScale,
+        72 + radius * 0.28 + index * 10,
+        this.toRouteZ(planet.worldY) * 1.72
       );
       this.flightGroup.add(sphere);
 
@@ -397,7 +426,11 @@ export class ObstacleManager {
     this.segment.debrisFields.forEach((field) => {
       for (let index = 0; index < field.count; index += 1) {
         const t = field.count === 1 ? 0.5 : index / (field.count - 1);
-        const x = (field.startX + (field.endX - field.startX) * t + this.offsetNoise(index + field.startX, 180)) * this.routeScale;
+        const x =
+          this.segmentWorld.routeStartX +
+          (field.startX + (field.endX - field.startX) * t + this.offsetNoise(index + field.startX, 180)) *
+            this.routeScale *
+            this.routeDistanceScale;
         const z = this.toRouteZ(field.top + (field.bottom - field.top) * this.normalizedNoise(index + field.endX, 0.65));
         const radius = 1.9 + this.normalizedNoise(index + field.endX, 0.82) * 2.6;
         const mesh = new THREE.Mesh(
@@ -417,7 +450,7 @@ export class ObstacleManager {
         new THREE.DodecahedronGeometry(radius, 0),
         new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.95, metalness: 0.06 })
       );
-      const x = asteroid.worldX * this.routeScale;
+      const x = this.segmentWorld.routeStartX + asteroid.worldX * this.routeScale * this.routeDistanceScale;
       const z = this.toRouteZ(asteroid.worldY);
       mesh.position.set(x, (this.normalizedNoise(asteroid.worldX, 0.4) - 0.5) * 8, z);
       this.flightGroup.add(mesh);
@@ -439,7 +472,7 @@ export class ObstacleManager {
         new THREE.SphereGeometry(zone.radius * 0.17, 30, 30),
         new THREE.MeshBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.1 })
       );
-      mesh.position.set(zone.worldX * this.routeScale, 0, this.toRouteZ(zone.worldY));
+      mesh.position.set(this.segmentWorld.routeStartX + zone.worldX * this.routeScale * this.routeDistanceScale, 0, this.toRouteZ(zone.worldY));
       this.flightGroup.add(mesh);
       this.gravityZones.push({
         x: mesh.position.x,
@@ -457,7 +490,7 @@ export class ObstacleManager {
         new THREE.BoxGeometry(zone.width * 0.18, 18, zone.height * 0.12),
         new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.12 })
       );
-      mesh.position.set(zone.worldX * this.routeScale, 0, this.toRouteZ(zone.worldY));
+      mesh.position.set(this.segmentWorld.routeStartX + zone.worldX * this.routeScale * this.routeDistanceScale, 0, this.toRouteZ(zone.worldY));
       this.flightGroup.add(mesh);
       this.ionZones.push({
         x: mesh.position.x,
@@ -751,17 +784,49 @@ export class ObstacleManager {
   }
 
   getDepartureForce(ship, progress = 0) {
-    const targetY = 8 + progress * this.segmentWorld.departure.departureLane.targetY;
+    const lane = this.segmentWorld.departure.departureLane;
+    let phase = "surface";
+    let targetY = lane.lowerY * 0.6;
+    let stabilizeY = 0.48;
+    let upward = 12;
+    let forwardAssist = 18;
+    let dragPenalty = 0.1;
+
+    if (ship.position.y >= lane.upperY) {
+      phase = "spaceBreak";
+      targetY = lane.targetY;
+      stabilizeY = 0.08;
+      upward = 3.2;
+      forwardAssist = 17;
+      dragPenalty = 0.02;
+    } else if (ship.position.y >= lane.lowerY) {
+      phase = "upperAtmosphere";
+      targetY = lane.upperY + 18;
+      stabilizeY = 0.16;
+      upward = 6;
+      forwardAssist = 18.5;
+      dragPenalty = 0.045;
+    } else if (ship.position.y >= 12) {
+      phase = "lowerAtmosphere";
+      targetY = lane.lowerY + 10;
+      stabilizeY = 0.28;
+      upward = 8.6;
+      forwardAssist = 16.5;
+      dragPenalty = 0.07;
+    }
+
     return {
+      phase,
       force: {
-        x: 18 * (1 - progress * 0.3),
-        y: 8.5 * (1 - progress * 0.5),
-        z: -ship.position.z * 0.38
+        x: 20 * (1 - progress * 0.2),
+        y: upward * (1 - progress * 0.28),
+        z: -ship.position.z * 0.46
       },
-      forwardAssist: 20 * (1 - progress * 0.55),
+      forwardAssist,
       stabilizeZ: 0.55,
-      stabilizeY: 0.42,
-      targetY
+      stabilizeY,
+      targetY,
+      dragPenalty
     };
   }
 
@@ -848,6 +913,10 @@ export class ObstacleManager {
 
   getRouteLength() {
     return this.segmentWorld.routeLength;
+  }
+
+  getRouteStartX() {
+    return this.segmentWorld.routeStartX;
   }
 
   getNavigationPoints(wormholeUsed = false) {

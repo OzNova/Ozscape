@@ -221,7 +221,7 @@ button:disabled {
 
 .hud {
   display: grid;
-  grid-template-columns: minmax(280px, 380px) minmax(220px, 1fr) minmax(220px, 1fr) minmax(210px, 240px);
+  grid-template-columns: minmax(300px, 420px) minmax(240px, 1fr) minmax(240px, 1fr) minmax(250px, 310px);
   gap: 14px;
   align-items: end;
 }
@@ -315,6 +315,7 @@ button:disabled {
 #minimapCanvas {
   width: 100%;
   aspect-ratio: 1;
+  min-height: 220px;
   border-radius: 18px;
   border: 1px solid rgba(125, 211, 252, 0.18);
   background: rgba(2, 6, 23, 0.88);

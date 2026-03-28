@@ -14,10 +14,10 @@ const SEGMENTS = [
       "Carry reactor cores off-world, refuel at Leviathan Station, then decide whether the wormhole bypass is worth the turbulence.",
     destinationLabel: "Extraction Gate Theta",
     stationLabel: "Leviathan Refuel Station",
-    length: 5600,
+    length: 8200,
     dockingDuration: 1.9,
     baseReward: 180,
-    fuelRewardFactor: 2.4,
+    fuelRewardFactor: 1.45,
     debrisFields: [
       { startX: 700, endX: 1500, top: 110, bottom: 610, count: 18 },
       { startX: 1700, endX: 2400, top: 150, bottom: 570, count: 16 },
@@ -61,10 +61,10 @@ const SEGMENTS = [
       "Deliver agricultural condensers through ring-shadow lanes, refuel at Ravel Dock, and cut distance with a high-value wormhole line if the corridor is clean.",
     destinationLabel: "Atlas Relay Insertion",
     stationLabel: "Ravel Dock",
-    length: 6100,
+    length: 9300,
     dockingDuration: 2.1,
     baseReward: 220,
-    fuelRewardFactor: 2.65,
+    fuelRewardFactor: 1.58,
     debrisFields: [
       { startX: 860, endX: 1620, top: 160, bottom: 620, count: 16 },
       { startX: 2200, endX: 3200, top: 130, bottom: 580, count: 22 },
@@ -107,10 +107,10 @@ const SEGMENTS = [
       "Move quantum relay cores through ion-washed relay fractures, dock at Ymir Array, and risk the experimental wormhole for a premium finish.",
     destinationLabel: "Relay Gate Ymir",
     stationLabel: "Ymir Array",
-    length: 6600,
+    length: 10600,
     dockingDuration: 2.2,
     baseReward: 260,
-    fuelRewardFactor: 2.8,
+    fuelRewardFactor: 1.72,
     debrisFields: [
       { startX: 740, endX: 1700, top: 150, bottom: 610, count: 20 },
       { startX: 2200, endX: 3300, top: 130, bottom: 590, count: 24 },
@@ -515,6 +515,7 @@ export class Game {
   }
 
   updateBoarding(deltaTime) {
+    this.scene.fog.density = 0.0046;
     const movement = this.character.update(this.input, deltaTime, { minX: -76, maxX: 76, minZ: -42, maxZ: 42 }, this.look);
     const cargo = this.obstacles.getCargoCheckpointInfo(this.character);
     const boarding = this.obstacles.getBoardingInfo(this.character);
@@ -575,56 +576,96 @@ export class Game {
       return;
     }
 
+    const launchForce = this.obstacles.getDepartureForce(this.player, this.run.launchProgress);
+
     const movement = this.player.update(
       this.input,
       deltaTime,
       {
         minX: departure.shipSpawn.x - 2,
-        maxX: departure.departureLane.clearX + 12,
+        maxX: departure.departureLane.spaceBreakX + 24,
         minY: 3.8,
-        maxY: 34,
-        minZ: -18,
-        maxZ: 18
+        maxY: departure.departureLane.targetY + 34,
+        minZ: -24,
+        maxZ: 24
       },
       this.save.upgrades,
-      this.obstacles.getDepartureForce(this.player, this.run.launchProgress),
+      launchForce,
       this.look
     );
 
     this.run.fuel = clamp(
-      safeNumber(this.run.fuel, maxFuel) - (0.14 + (movement.thrusting ? 0.24 : 0)) * deltaTime,
+      safeNumber(this.run.fuel, maxFuel) - (0.08 + (movement.thrusting ? 0.18 : 0) + (launchForce.dragPenalty ?? 0)) * deltaTime,
       0,
       maxFuel
     );
 
     const xProgress = clamp(
-      (this.player.position.x - departure.shipSpawn.x) / Math.max(departure.departureLane.clearX - departure.shipSpawn.x, 1),
+      (this.player.position.x - departure.shipSpawn.x) / Math.max(departure.departureLane.spaceBreakX - departure.shipSpawn.x, 1),
       0,
       1
     );
     const yProgress = clamp(this.player.position.y / Math.max(departure.departureLane.targetY, 1), 0, 1);
-    this.run.launchProgress = Math.max(this.run.launchProgress, xProgress * 0.65 + yProgress * 0.35);
+    this.run.launchProgress = Math.max(this.run.launchProgress, xProgress * 0.55 + yProgress * 0.45);
+    this.run.launchPhase = launchForce.phase;
 
-    this.statusText = "Launch corridor active.";
-    this.objectiveText = "Clear the corridor and break into open route space.";
+    const phaseCopy =
+      launchForce.phase === "surface"
+        ? {
+            status: "Surface departure underway.",
+            objective: `Lift off from ${this.segment.departure.planetLabel} and clear the port traffic lane.`,
+            prompt: "Climb gently with W and Space. Stay centered in the illuminated lane."
+          }
+        : launchForce.phase === "lowerAtmosphere"
+          ? {
+              status: "Lower atmosphere transit.",
+              objective: `Push through the lower atmosphere of ${this.segment.departure.planetLabel}.`,
+              prompt: "Maintain ascent. Expect heavier drag and stronger stabilization near the planet."
+            }
+          : launchForce.phase === "upperAtmosphere"
+            ? {
+                status: "Upper atmosphere transition.",
+                objective: "Break through the upper haze until stars and route beacons are fully visible.",
+                prompt: `Keep climbing and accelerating. ${this.segment.stationLabel} will become your primary target once you clear atmosphere.`
+              }
+            : {
+                status: "Exosphere break.",
+                objective: `Leave the planet's atmosphere and align with the long-haul lane toward ${this.segment.stationLabel}.`,
+                prompt: `Follow the blue station beacon and prepare for deep-space cruise.`
+              };
+
+    this.statusText = phaseCopy.status;
+    this.objectiveText = phaseCopy.objective;
     this.promptText = this.pointerLocked
-      ? `Climb with W and Space. Follow the blue ${this.segment.stationLabel} beacon beyond the port.`
-      : "Click the view to capture the camera, then climb through the corridor.";
+      ? phaseCopy.prompt
+      : "Click the view to capture the camera, then continue the ascent.";
+    this.scene.fog.density =
+      launchForce.phase === "surface"
+        ? 0.0052
+        : launchForce.phase === "lowerAtmosphere"
+          ? 0.0042
+          : launchForce.phase === "upperAtmosphere"
+            ? 0.0031
+            : 0.00235;
 
     if (this.run.fuel <= 0) {
       this.failMission("Fuel reserves depleted during launch.");
       return;
     }
 
-    if (this.player.position.x >= departure.departureLane.clearX || this.run.launchProgress >= 1) {
+    if (
+      this.player.position.x >= departure.departureLane.spaceBreakX &&
+      this.player.position.y >= departure.departureLane.targetY * 0.92
+    ) {
       this.state = "routeFlight";
       this.run.routeProgress = this.player.position.x;
       this.look.pitch = 0;
-      this.setToast(`Route live. Follow the station beacon and dock at ${this.segment.stationLabel}.`, 2.8);
+      this.setToast(`Atmosphere cleared. The long-haul route to ${this.segment.stationLabel} is now live.`, 2.8);
     }
   }
 
   updateRouteFlight(deltaTime) {
+    this.scene.fog.density += (0.00155 - this.scene.fog.density) * clamp(deltaTime * 2.2, 0, 1);
     const stats = this.getDerivedStats();
     const maxFuel = safeNumber(stats.maxFuel, 45);
     const gravity = this.obstacles.getGravityInfluence(this.player, this.save.upgrades.durability);
@@ -643,7 +684,14 @@ export class Game {
     const movement = this.player.update(
       this.input,
       deltaTime,
-      { minX: 0, maxX: this.obstacles.getRouteLength() + 40, minY: -14, maxY: 28, minZ: -58, maxZ: 58 },
+      {
+        minX: this.obstacles.getRouteStartX() - 80,
+        maxX: this.obstacles.getRouteLength() + 40,
+        minY: -18,
+        maxY: 48,
+        minZ: -68,
+        maxZ: 68
+      },
       this.save.upgrades,
       environment,
       this.look
@@ -661,7 +709,7 @@ export class Game {
 
     this.run.fuel = clamp(
       safeNumber(this.run.fuel, maxFuel) -
-        (0.42 + (movement.thrusting ? 0.58 : 0) + gravity.fuelPenalty * 0.7 + ionStorm.fuelPenalty * 0.7) * deltaTime,
+        (0.34 + (movement.thrusting ? 0.46 : 0) + gravity.fuelPenalty * 0.6 + ionStorm.fuelPenalty * 0.6) * deltaTime,
       0,
       maxFuel
     );
@@ -729,6 +777,7 @@ export class Game {
   }
 
   updateDocking(deltaTime) {
+    this.scene.fog.density += (0.0019 - this.scene.fog.density) * clamp(deltaTime * 2.2, 0, 1);
     this.run.dockingTimer = Math.max(0, this.run.dockingTimer - deltaTime);
     this.run.fuel = safeNumber(this.getDerivedStats().maxFuel, 45);
     this.statusText = "Docking clamps engaged.";
@@ -744,6 +793,7 @@ export class Game {
   }
 
   updateWormholeTransit(deltaTime) {
+    this.scene.fog.density += (0.0028 - this.scene.fog.density) * clamp(deltaTime * 2.4, 0, 1);
     this.run.wormholeTimer = Math.max(0, this.run.wormholeTimer - deltaTime);
     this.statusText = "Wormhole corridor engaged.";
     this.objectiveText = "Hold the freighter together through transit.";
@@ -767,6 +817,7 @@ export class Game {
   }
 
   updateArrival(deltaTime) {
+    this.scene.fog.density += (0.0038 - this.scene.fog.density) * clamp(deltaTime * 2, 0, 1);
     const movement = this.character.update(this.input, deltaTime, { minX: -42, maxX: 42, minZ: -24, maxZ: 24 }, this.look);
     const arrival = this.obstacles.getArrivalInfo(this.character);
     const interact = this.consumeInteract();
@@ -787,6 +838,7 @@ export class Game {
   }
 
   backgroundPreviewDrift(_deltaTime) {
+    this.scene.fog.density += (0.0036 - this.scene.fog.density) * 0.04;
     const departure = this.obstacles.getDepartureWorld();
     this.player.position.x = departure.shipSpawn.x + Math.sin(this.time * 0.45) * 1.6;
     this.player.position.z = departure.shipSpawn.z + Math.cos(this.time * 0.35) * 0.9;
@@ -838,7 +890,13 @@ export class Game {
   }
 
   failMission(reason) {
-    const fallback = Math.round(24 + (this.run.routeProgress / Math.max(this.obstacles.getRouteLength(), 1)) * 42);
+    const effectiveRouteProgress = clamp(
+      (this.run.routeProgress - this.obstacles.getRouteStartX()) /
+        Math.max(this.obstacles.getRouteLength() - this.obstacles.getRouteStartX(), 1),
+      0,
+      1
+    );
+    const fallback = Math.round(24 + effectiveRouteProgress * 42);
     this.summary = {
       title: "Route Failed",
       result: "failure",
@@ -1027,6 +1085,17 @@ export class Game {
         }
       };
     }
+    if (this.state === "launch") {
+      const departure = this.obstacles.getDepartureWorld();
+      return {
+        key: "atmosphere",
+        label: "Atmosphere Exit",
+        position: {
+          x: departure.departureLane.spaceBreakX,
+          z: 0
+        }
+      };
+    }
     const points = this.obstacles.getNavigationPoints(this.run.wormholeUsed);
     if (!this.run.stationCompleted) {
       return { key: "station", label: this.segment.stationLabel, position: points.station };
@@ -1050,7 +1119,7 @@ export class Game {
     const height = canvas.height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const range = this.state === "launch" ? 150 : this.isShipState() ? 220 : 90;
+    const range = this.state === "launch" ? 320 : this.isShipState() ? 640 : 140;
     const points = this.obstacles.getNavigationPoints(this.run.wormholeUsed);
     const trackedPosition = this.isOnFootState() ? this.character.position : this.player.position;
     const trackedYaw = this.isOnFootState() ? this.look.yaw : this.look.yaw;
@@ -1097,7 +1166,7 @@ export class Game {
     if ((this.isShipState() || this.state === "launch") && points.wormhole) {
       drawPoint(points.wormhole.x, points.wormhole.z, "#f472b6", 3.5);
     }
-    if (this.isOnFootState() && target?.position) {
+    if ((this.isOnFootState() || this.state === "launch") && target?.position) {
       drawPoint(target.position.x, target.position.z, target.key === "delivery" ? "#4ade80" : target.key === "cargo" ? "#fbbf24" : "#67e8f9", 4.4);
     }
 
@@ -1174,7 +1243,12 @@ export class Game {
     }
 
     const maxFuel = safeNumber(this.getDerivedStats().maxFuel, 45);
-    const routeProgress = clamp(this.run.routeProgress / Math.max(this.obstacles.getRouteLength(), 1), 0, 1);
+    const routeProgress = clamp(
+      (this.run.routeProgress - this.obstacles.getRouteStartX()) /
+        Math.max(this.obstacles.getRouteLength() - this.obstacles.getRouteStartX(), 1),
+      0,
+      1
+    );
     const fuelRatio = clamp(safeNumber(this.run.fuel, maxFuel) / Math.max(maxFuel, 1), 0, 1);
     const target = this.getCurrentNavigationTarget();
 
@@ -1199,7 +1273,7 @@ export class Game {
       targetLabelEl.textContent = target?.label ?? "Mission";
     }
     if (minimapModeEl) {
-      minimapModeEl.textContent = this.state === "launch" ? "Launch Lane" : this.isShipState() ? "Deep Route" : "Port Grid";
+      minimapModeEl.textContent = this.state === "launch" ? "Planet Exit" : this.isShipState() ? "Long Route" : "Port Grid";
     }
 
     const gameplayState = this.isGameplayState();
@@ -1237,6 +1311,7 @@ export class Game {
       titleEl.textContent = this.segment.name;
       copyEl.textContent = `${this.segment.briefing} You begin at the port on foot, log the cargo manifest, board the freighter, and launch yourself.`;
       this.addDetail(detailsEl, `Route: ${this.segment.subtitle}`);
+      this.addDetail(detailsEl, `Scaled distance: ${Math.round(this.obstacles.getRouteLength() - this.obstacles.getRouteStartX())} km`);
       this.addDetail(detailsEl, `Mandatory refuel: ${this.segment.stationLabel}`);
       this.addDetail(detailsEl, `Destination: ${this.segment.destinationLabel}`);
       this.addDetail(detailsEl, `Wormhole bonus: ${this.segment.wormhole ? `${this.segment.wormhole.rewardBonus} credits` : "None"}`);
@@ -1318,11 +1393,11 @@ export class Game {
       </div>
       <div class="help-card">
         <h3>How To Start</h3>
-        <p>At the port, walk to the yellow cargo zone and press <strong>E</strong> to pick up the manifest case. Carry it to the cyan ramp zone, press <strong>E</strong> to board the ship, then press <strong>E</strong> once more to ignite launch.</p>
+        <p>At the port, walk to the yellow cargo zone and press <strong>E</strong> to pick up the manifest case. Carry it to the cyan ramp zone, press <strong>E</strong> to board the ship, then press <strong>E</strong> once more to ignite launch and climb through the atmosphere before the route opens.</p>
       </div>
       <div class="help-card">
         <h3>Route Rules</h3>
-        <p>Collisions fail the route. Fuel drains during launch and flight. Follow the radar and blue station beacon first, because the destination gate only counts after the station refuel is complete.</p>
+        <p>Collisions fail the route. Fuel drains during launch and flight. First clear the planet's atmosphere, then follow the radar and blue station beacon, because the destination gate only counts after station refuel is complete.</p>
       </div>
       <div class="help-card">
         <h3>Wormholes And Delivery</h3>
@@ -1346,7 +1421,7 @@ export class Game {
     const handling = safeInteger(upgrades.handling);
     return {
       cruiseSpeed: 96 + engine * 10,
-      maxFuel: Math.max(1, 72 + fuelTank * 16),
+      maxFuel: Math.max(1, 120 + fuelTank * 24),
       handlingFactor: 1 + handling * 0.1,
       dockingAssist: durability * 0.24 + handling * 0.1,
       wormholeAssist: engine * 0.13 + handling * 0.1
