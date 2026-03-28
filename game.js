@@ -3,10 +3,7 @@ import { ObstacleManager } from "./obstacles.js";
 
 const SAVE_KEY = "ozscape-save-v4";
 
-const createDeparture = (portLabel, planetLabel) => ({
-  portLabel,
-  planetLabel
-});
+const createDeparture = (portLabel, planetLabel) => ({ portLabel, planetLabel });
 
 const SEGMENTS = [
   {
@@ -153,10 +150,10 @@ const SEGMENTS = [
 ];
 
 const UPGRADE_DEFS = [
-  { key: "engine", name: "Engine", description: "Raises thrust output and route speed.", baseCost: 140 },
-  { key: "durability", name: "Durability", description: "Improves docking tolerance and hazard resistance.", baseCost: 130 },
-  { key: "fuelTank", name: "Fuel Tank", description: "Increases reserves for longer lanes.", baseCost: 125 },
-  { key: "handling", name: "Handling", description: "Sharpens ship response and courier agility.", baseCost: 135 }
+  { key: "engine", name: "Engine", description: "More forward thrust and smoother cruise speed.", baseCost: 140 },
+  { key: "durability", name: "Durability", description: "Better resistance to gravity pull and docking instability.", baseCost: 130 },
+  { key: "fuelTank", name: "Fuel Tank", description: "Higher reserve capacity for long-haul routes.", baseCost: 125 },
+  { key: "handling", name: "Handling", description: "Sharper lateral control and cleaner drift recovery.", baseCost: 135 }
 ];
 
 const defaultSave = () => ({
@@ -186,27 +183,37 @@ export class Game {
     this.THREE = THREE;
     this.renderer = renderer;
     this.canvas = canvas;
-    this.controls = controls;
+    this.controlsRef = controls;
+
+    this.renderer.setClearColor(0x020617, 1);
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.08;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x030712, 0.0035);
+    this.scene.fog = new THREE.FogExp2(0x020617, 0.0026);
 
     this.camera = new THREE.PerspectiveCamera(56, 16 / 9, 0.1, 6000);
     this.cameraTarget = new THREE.Vector3();
 
-    this.ambientLight = new THREE.AmbientLight(0xbcd7ff, 1.4);
-    this.sunLight = new THREE.DirectionalLight(0xffffff, 1.45);
-    this.sunLight.position.set(80, 140, 70);
-    this.sunLight.castShadow = true;
-    this.sunLight.shadow.mapSize.set(1024, 1024);
-    this.sunLight.shadow.camera.left = -180;
-    this.sunLight.shadow.camera.right = 180;
-    this.sunLight.shadow.camera.top = 180;
-    this.sunLight.shadow.camera.bottom = -180;
-    this.scene.add(this.ambientLight, this.sunLight);
+    this.scene.add(new THREE.HemisphereLight(0xb9e3ff, 0x0a1022, 1.4));
 
-    this.controlsRef = controls;
+    this.keyLight = new THREE.DirectionalLight(0xffffff, 1.55);
+    this.keyLight.position.set(120, 180, 80);
+    this.keyLight.castShadow = true;
+    this.keyLight.shadow.mapSize.set(2048, 2048);
+    this.keyLight.shadow.camera.left = -260;
+    this.keyLight.shadow.camera.right = 260;
+    this.keyLight.shadow.camera.top = 260;
+    this.keyLight.shadow.camera.bottom = -260;
+    this.scene.add(this.keyLight);
+
+    this.fillLight = new THREE.PointLight(0x60a5fa, 1.2, 900);
+    this.fillLight.position.set(-80, 90, 120);
+    this.scene.add(this.fillLight);
+
     this.input = { w: false, a: false, s: false, d: false };
+    this.interactPressed = false;
+
     this.state = "menu";
     this.segmentIndex = 0;
     this.segment = SEGMENTS[0];
@@ -222,10 +229,15 @@ export class Game {
 
     this.obstacles = new ObstacleManager(THREE, this.scene);
     this.run = this.createEmptyRun();
+    this.promptText = "Stand by.";
+    this.statusText = "Freight command online.";
+    this.objectiveText = "Review mission command.";
 
     this.bindInput();
     this.loadSegmentWorld();
-    this.renderPanel();
+    this.syncPreviewActors();
+    this.updateModeVisibility();
+    this.renderUI();
   }
 
   start() {
@@ -233,8 +245,8 @@ export class Game {
   }
 
   handleResize() {
-    const width = this.canvas.clientWidth || this.canvas.width;
-    const height = this.canvas.clientHeight || this.canvas.height;
+    const width = window.innerWidth || this.canvas.clientWidth || 1280;
+    const height = window.innerHeight || this.canvas.clientHeight || 720;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / Math.max(height, 1);
@@ -248,6 +260,10 @@ export class Game {
         event.preventDefault();
         this.input[key] = true;
       }
+      if (key === "e" || key === "enter" || key === " ") {
+        event.preventDefault();
+        this.interactPressed = true;
+      }
     });
 
     window.addEventListener("keyup", (event) => {
@@ -259,53 +275,55 @@ export class Game {
     });
   }
 
+  consumeInteract() {
+    const pressed = this.interactPressed;
+    this.interactPressed = false;
+    return pressed;
+  }
+
   handlePrimaryAction() {
     if (this.state === "menu") {
-      this.state = "campaignMap";
-    } else if (this.state === "campaignMap") {
       this.state = "briefing";
     } else if (this.state === "briefing") {
       this.startMission();
     } else if (this.state === "results") {
       this.state = "hangar";
     } else if (this.state === "hangar") {
-      this.state = "campaignMap";
+      this.prepareNextContract();
+      this.state = "briefing";
     } else if (this.state === "gameOver") {
       this.state = "briefing";
     }
 
     this.syncPreviewActors();
-    this.renderPanel();
+    this.updateModeVisibility();
+    this.renderUI();
   }
 
   handleSecondaryAction() {
     if (this.state === "menu") {
-      this.resetSave();
-      this.segmentIndex = 0;
-      this.segment = SEGMENTS[0];
-      this.loadSegmentWorld();
-      return;
-    }
-
-    if (this.state === "campaignMap") {
-      this.segmentIndex = (this.segmentIndex + 1) % this.save.unlockedSegments;
-      this.segment = SEGMENTS[this.segmentIndex];
-      this.loadSegmentWorld();
-      return;
-    }
-
-    if (this.state === "briefing") {
-      this.state = "campaignMap";
-    } else if (this.state === "results") {
-      this.state = "campaignMap";
+      this.state = "hangar";
+    } else if (this.state === "briefing") {
+      this.state = "menu";
     } else if (this.state === "hangar") {
       this.state = "menu";
+    } else if (this.state === "results") {
+      this.prepareNextContract();
+      this.state = "briefing";
     } else if (this.state === "gameOver") {
-      this.state = "campaignMap";
+      this.state = "menu";
     }
 
     this.syncPreviewActors();
-    this.renderPanel();
+    this.updateModeVisibility();
+    this.renderUI();
+  }
+
+  prepareNextContract() {
+    const highestUnlockedIndex = Math.max(0, this.save.unlockedSegments - 1);
+    this.segmentIndex = clamp(this.segmentIndex + 1, 0, highestUnlockedIndex);
+    this.segment = SEGMENTS[this.segmentIndex];
+    this.loadSegmentWorld();
   }
 
   startMission() {
@@ -317,14 +335,14 @@ export class Game {
       ...this.createEmptyRun(),
       fuel: safeNumber(stats.maxFuel, 45)
     };
+    this.summary = null;
     this.state = "boarding";
-    this.renderPanel();
+    this.updateModeVisibility();
+    this.renderUI();
   }
 
   loadSegmentWorld() {
     this.obstacles.loadSegment(this.segment);
-    this.syncPreviewActors();
-    this.renderPanel();
   }
 
   syncPreviewActors() {
@@ -363,57 +381,78 @@ export class Game {
       this.updateWormholeTransit(deltaTime);
     } else if (this.state === "arrival") {
       this.updateArrival(deltaTime);
-    } else if (this.state === "menu" || this.state === "campaignMap" || this.state === "briefing" || this.state === "hangar" || this.state === "gameOver" || this.state === "results") {
+    } else {
       this.backgroundPreviewDrift(deltaTime);
     }
 
     this.obstacles.update(deltaTime, this.run.routeProgress, { time: this.time, wormholeUsed: this.run.wormholeUsed });
     this.updateModeVisibility();
     this.updateCamera(deltaTime);
+    this.renderUI();
   }
 
   updateBoarding(deltaTime) {
-    this.character.update(this.input, deltaTime, { minX: -70, maxX: 70, minZ: -42, maxZ: 42 });
+    const movement = this.character.update(this.input, deltaTime, { minX: -72, maxX: 72, minZ: -40, maxZ: 42 });
     const cargo = this.obstacles.getCargoCheckpointInfo(this.character);
     const boarding = this.obstacles.getBoardingInfo(this.character);
+    const interact = this.consumeInteract();
 
-    if (!this.run.cargoSecured && cargo.inZone) {
-      this.run.cargoProgress = clamp(this.run.cargoProgress + deltaTime, 0, 1.2);
-      if (this.run.cargoProgress >= 1.2) {
+    this.statusText = this.segment.departure.portLabel;
+
+    if (!this.run.cargoSecured) {
+      this.objectiveText = "Walk to the cargo zone and log the manifest.";
+      this.promptText = cargo.inZone ? "Press E to secure the cargo manifest." : "WASD to move. Head to the yellow cargo zone.";
+      if (cargo.inZone && interact) {
         this.run.cargoSecured = true;
-      }
-    } else if (!this.run.cargoSecured) {
-      this.run.cargoProgress = Math.max(0, this.run.cargoProgress - deltaTime * 0.6);
-    }
-
-    if (this.run.cargoSecured && boarding.inZone) {
-      this.run.boardingProgress = clamp(this.run.boardingProgress + deltaTime * 1.15, 0, 1.15);
-      if (this.run.boardingProgress >= 1.15) {
         this.run.cargoLoaded = 3;
+      }
+    } else {
+      this.objectiveText = "Move to the ramp and board the freighter.";
+      this.promptText = boarding.inZone ? "Press E to board the ship." : "Cargo locked. Walk to the cyan ramp zone.";
+      if (boarding.inZone && interact) {
         this.state = "launch";
       }
-    } else if (this.run.cargoSecured) {
-      this.run.boardingProgress = Math.max(0, this.run.boardingProgress - deltaTime * 0.65);
     }
 
-    this.renderPanel();
+    this.run.boardingProgress = this.run.cargoSecured && boarding.inZone ? 1 : 0;
+    this.run.cargoProgress = this.run.cargoSecured ? 1 : cargo.inZone ? clamp(this.run.cargoProgress + deltaTime * 0.8, 0, 1) : 0;
+    this.run.onFootSpeed = movement.speed;
   }
 
   updateLaunch(deltaTime) {
     const stats = this.getDerivedStats();
     const maxFuel = safeNumber(stats.maxFuel, 45);
     const departure = this.obstacles.getDepartureWorld();
-    const launchForce = this.obstacles.getDepartureForce(this.player, this.run.launchProgress);
+    const interact = this.consumeInteract();
+
+    if (!this.run.launchAuthorized) {
+      this.statusText = "Freighter powered on.";
+      this.objectiveText = "Ignite the launch sequence.";
+      this.promptText = "Press E to ignite launch. Then use W/S for thrust and A/D for lateral trim.";
+      if (interact) {
+        this.run.launchAuthorized = true;
+      }
+      return;
+    }
+
+    const launchAssist = this.obstacles.getDepartureForce(this.player, this.run.launchProgress);
     const movement = this.player.update(
       this.input,
       deltaTime,
-      { minX: departure.shipSpawn.x, maxX: departure.departureLane.clearX + 12, minY: 2.8, maxY: 24, minZ: -16, maxZ: 16 },
-      stats,
-      [launchForce]
+      {
+        minX: departure.shipSpawn.x - 2,
+        maxX: departure.departureLane.clearX + 12,
+        minY: 3.8,
+        maxY: 24,
+        minZ: -16,
+        maxZ: 16
+      },
+      this.save.upgrades,
+      launchAssist
     );
 
     this.run.fuel = clamp(
-      safeNumber(this.run.fuel, maxFuel) - (0.32 + (movement.thrusting ? 0.48 : 0)) * deltaTime,
+      safeNumber(this.run.fuel, maxFuel) - (0.35 + (movement.thrusting ? 0.45 : 0)) * deltaTime,
       0,
       maxFuel
     );
@@ -426,20 +465,26 @@ export class Game {
     const yProgress = clamp(this.player.position.y / Math.max(departure.departureLane.targetY, 1), 0, 1);
     this.run.launchProgress = Math.max(this.run.launchProgress, xProgress * 0.7 + yProgress * 0.3);
 
-    if (this.player.position.x >= departure.departureLane.clearX || this.run.launchProgress >= 1) {
-      this.state = "routeFlight";
-      this.player.position.x = 26;
-      this.player.position.y = 6;
-      this.player.syncSceneObject();
-      this.run.routeProgress = this.player.position.x;
-    }
+    this.statusText = "Launch corridor active.";
+    this.objectiveText = "Clear the port and break into open space.";
+    this.promptText = "Hold W to drive out of the corridor. Use A/D to stay centered.";
 
     if (this.run.fuel <= 0) {
       this.failMission("Fuel reserves depleted during launch.");
       return;
     }
 
-    this.renderPanel();
+    if (this.player.position.x >= departure.departureLane.clearX || this.run.launchProgress >= 1) {
+      this.state = "routeFlight";
+      this.player.position.x = 22;
+      this.player.position.y = 6;
+      this.player.position.z = 0;
+      this.player.velocity.x = 18;
+      this.player.velocity.y = 0;
+      this.player.velocity.z = 0;
+      this.player.syncSceneObject();
+      this.run.routeProgress = this.player.position.x;
+    }
   }
 
   updateRouteFlight(deltaTime) {
@@ -447,17 +492,25 @@ export class Game {
     const maxFuel = safeNumber(stats.maxFuel, 45);
     const gravity = this.obstacles.getGravityInfluence(this.player, this.save.upgrades.durability);
     const ionStorm = this.obstacles.getIonStormEffect(this.player, this.save.upgrades.durability);
+
+    const environment = {
+      force: {
+        x: gravity.active ? gravity.force.x : 0,
+        y: gravity.active ? gravity.force.y : 0,
+        z: (gravity.active ? gravity.force.z : 0) + (ionStorm.active ? Math.sin(this.time * 6.5) * ionStorm.controlPenalty * 8 : 0)
+      },
+      forwardAssist: stats.cruiseSpeed * 0.12,
+      stabilizeZ: 0.04
+    };
+
     const movement = this.player.update(
       this.input,
       deltaTime,
-      { minX: 0, maxX: this.obstacles.getRouteLength() + 30, minY: -16, maxY: 26, minZ: -58, maxZ: 58 },
-      stats,
-      gravity.active ? [gravity.force] : []
+      { minX: 0, maxX: this.obstacles.getRouteLength() + 40, minY: -14, maxY: 28, minZ: -58, maxZ: 58 },
+      this.save.upgrades,
+      environment
     );
 
-    const passiveForward = 9.5 + stats.cruiseSpeed * 0.06;
-    this.player.position.x += passiveForward * deltaTime;
-    this.player.syncSceneObject();
     this.run.routeProgress = this.player.position.x;
 
     if (gravity.active) {
@@ -468,9 +521,8 @@ export class Game {
       this.run.softPenalty += deltaTime * ionStorm.controlPenalty;
     }
 
-    const currentFuel = safeNumber(this.run.fuel, maxFuel);
     this.run.fuel = clamp(
-      currentFuel - (0.9 + (movement.thrusting ? 1.2 : 0) + gravity.fuelPenalty + ionStorm.fuelPenalty) * deltaTime,
+      safeNumber(this.run.fuel, maxFuel) - (0.82 + (movement.thrusting ? 1.08 : 0) + gravity.fuelPenalty + ionStorm.fuelPenalty) * deltaTime,
       0,
       maxFuel
     );
@@ -482,39 +534,30 @@ export class Game {
     }
 
     const docking = this.obstacles.getDockingInfo(this.player);
-    if (!this.run.stationCompleted && docking.inZone) {
-      if (movement.stable) {
-        this.run.dockingProgress = clamp(
-          this.run.dockingProgress + deltaTime * (0.55 + docking.alignment + stats.dockingAssist * 0.15),
-          0,
-          this.segment.dockingDuration
-        );
-      } else {
-        this.run.dockingProgress = Math.max(0, this.run.dockingProgress - deltaTime * 0.5);
-      }
-      if (this.run.dockingProgress >= this.segment.dockingDuration) {
-        this.state = "docking";
-        this.run.dockingTimer = 1.8;
-      }
-    } else if (!this.run.stationCompleted) {
-      this.run.dockingProgress = Math.max(0, this.run.dockingProgress - deltaTime * 0.45);
-    }
-
     const wormhole = this.obstacles.getWormholeInfo(this.player, this.run.wormholeUsed);
-    if (this.run.stationCompleted && wormhole.available && wormhole.inZone && movement.stable) {
-      this.run.wormholeAlignment = clamp(
-        this.run.wormholeAlignment + deltaTime * (0.8 + wormhole.alignment + stats.wormholeAssist * 0.16),
-        0,
-        1.5
-      );
-      if (this.run.wormholeAlignment >= 1.5) {
+    const interact = this.consumeInteract();
+
+    if (!this.run.stationCompleted && docking.inZone && movement.stable) {
+      this.promptText = "Press E to engage docking clamps.";
+      if (interact) {
+        this.state = "docking";
+        this.run.dockingTimer = this.segment.dockingDuration;
+      }
+    } else if (this.run.stationCompleted && wormhole.available && wormhole.inZone && movement.stable) {
+      this.promptText = "Press E to enter the wormhole corridor.";
+      if (interact) {
         this.state = "wormholeTransit";
         this.run.wormholeTimer = this.segment.wormhole.turbulenceDuration;
         this.run.wormholeUsed = true;
       }
     } else {
-      this.run.wormholeAlignment = Math.max(0, this.run.wormholeAlignment - deltaTime * 0.7);
+      this.promptText = !this.run.stationCompleted
+        ? `Reach ${this.segment.stationLabel} and stabilize for docking.`
+        : `Fly to ${this.segment.destinationLabel}. Wormhole is ${this.run.wormholeUsed ? "spent" : "optional"}.`;
     }
+
+    this.statusText = this.run.stationCompleted ? "Station serviced. Route cleared for delivery." : `Refuel required at ${this.segment.stationLabel}.`;
+    this.objectiveText = this.run.stationCompleted ? `Reach ${this.segment.destinationLabel}.` : `Dock at ${this.segment.stationLabel}.`;
 
     if (this.obstacles.getGateInfo(this.player).inZone && this.run.stationCompleted) {
       this.completeMission();
@@ -528,61 +571,73 @@ export class Game {
 
     if (this.run.fuel <= 0) {
       this.failMission("Fuel reserves depleted before reaching the destination gate.");
-      return;
     }
-
-    this.renderPanel();
   }
 
   updateDocking(deltaTime) {
     this.run.dockingTimer = Math.max(0, this.run.dockingTimer - deltaTime);
     this.run.fuel = safeNumber(this.getDerivedStats().maxFuel, 45);
+    this.statusText = "Docking clamps engaged.";
+    this.objectiveText = "Hold while the station reloads fuel reserves.";
+    this.promptText = "Refuel in progress.";
+
     if (this.run.dockingTimer === 0) {
       this.run.stationCompleted = true;
       this.run.dockingQuality = clamp(1 - (this.run.hazardExposure * 0.02), 0.35, 1);
-      this.run.dockingProgress = 0;
       this.state = "routeFlight";
     }
-    this.renderPanel();
   }
 
   updateWormholeTransit(deltaTime) {
     this.run.wormholeTimer = Math.max(0, this.run.wormholeTimer - deltaTime);
+    this.statusText = "Wormhole corridor engaged.";
+    this.objectiveText = "Hold the freighter together through transit.";
+    this.promptText = "Space is folding. Stay on course.";
+
     if (this.run.wormholeTimer === 0) {
       const maxFuel = safeNumber(this.getDerivedStats().maxFuel, 45);
       this.player.position.x = this.obstacles.wormhole.exitProgress;
       this.player.position.z = 0;
+      this.player.position.y = 4.5;
+      this.player.velocity.x = 22;
+      this.player.velocity.z = 0;
+      this.player.velocity.y = 0;
       this.player.syncSceneObject();
       this.run.routeProgress = this.player.position.x;
-      this.run.fuel = clamp(safeNumber(this.run.fuel, maxFuel) + this.segment.wormhole.fuelBonus, 0, maxFuel);
+      this.run.fuel = clamp(safeNumber(this.run.fuel, maxFuel) + safeNumber(this.segment.wormhole.fuelBonus, 0), 0, maxFuel);
       this.run.shortcutBonus = this.segment.wormhole.rewardBonus;
       this.state = "routeFlight";
     }
-    this.renderPanel();
   }
 
   updateArrival(deltaTime) {
-    this.character.update(this.input, deltaTime, { minX: -40, maxX: 42, minZ: -24, maxZ: 26 });
+    this.character.update(this.input, deltaTime, { minX: -42, maxX: 42, minZ: -24, maxZ: 24 });
     const arrival = this.obstacles.getArrivalInfo(this.character);
-    if (arrival.inZone) {
-      this.run.arrivalProgress = clamp(this.run.arrivalProgress + deltaTime, 0, 1.1);
-      if (this.run.arrivalProgress >= 1.1) {
-        this.state = "results";
-      }
-    } else {
-      this.run.arrivalProgress = Math.max(0, this.run.arrivalProgress - deltaTime * 0.4);
+    const interact = this.consumeInteract();
+
+    this.statusText = "Ship landed at the delivery port.";
+    this.objectiveText = "Walk to the delivery office and close the contract.";
+    this.promptText = arrival.inZone ? "Press E to complete delivery." : "WASD to move. Walk to the green delivery zone.";
+
+    if (arrival.inZone && interact) {
+      this.state = "results";
     }
-    this.renderPanel();
   }
 
   backgroundPreviewDrift(deltaTime) {
     const departure = this.obstacles.getDepartureWorld();
-    this.player.position.x = departure.shipSpawn.x + Math.sin(this.time * 0.35) * 1.2;
-    this.player.position.z = departure.shipSpawn.z + Math.cos(this.time * 0.4) * 0.8;
+    this.player.position.x = departure.shipSpawn.x + Math.sin(this.time * 0.45) * 1.6;
+    this.player.position.z = departure.shipSpawn.z + Math.cos(this.time * 0.35) * 0.9;
     this.player.syncSceneObject();
-    this.character.position.x = departure.characterSpawn.x + Math.sin(this.time * 0.7) * 0.4;
-    this.character.position.z = departure.characterSpawn.z + Math.cos(this.time * 0.6) * 0.4;
+    this.character.position.x = departure.characterSpawn.x + Math.sin(this.time * 0.55) * 0.4;
+    this.character.position.z = departure.characterSpawn.z + Math.cos(this.time * 0.5) * 0.5;
     this.character.syncSceneObject();
+
+    if (this.state === "menu") {
+      this.statusText = "Freight command online.";
+      this.objectiveText = "Review the next contract.";
+      this.promptText = "Begin when ready.";
+    }
   }
 
   completeMission() {
@@ -590,13 +645,12 @@ export class Game {
     const dockingBonus = Math.round(65 * this.run.dockingQuality);
     const hazardBonus = Math.max(0, Math.round(50 - this.run.hazardExposure * 10 - this.run.softPenalty * 14));
     const shortcutBonus = this.run.shortcutBonus;
-    const baseReward = this.segment.baseReward;
-    const total = baseReward + fuelBonus + dockingBonus + hazardBonus + shortcutBonus;
+    const total = this.segment.baseReward + fuelBonus + dockingBonus + hazardBonus + shortcutBonus;
 
     this.summary = {
       title: "Delivery Complete",
       result: "success",
-      baseReward,
+      baseReward: this.segment.baseReward,
       fuelBonus,
       dockingBonus,
       hazardBonus,
@@ -617,7 +671,6 @@ export class Game {
     this.character.reset(arrival.characterSpawn);
     this.player.reset(arrival.shipSpawn, this.save.upgrades);
     this.state = "arrival";
-    this.renderPanel();
   }
 
   failMission(reason) {
@@ -633,16 +686,16 @@ export class Game {
       total: fallback,
       reason
     };
+
     this.save.credits += fallback;
     this.persistSave();
     this.state = "gameOver";
     this.syncPreviewActors();
-    this.renderPanel();
   }
 
   updateModeVisibility() {
-    if (this.state === "boarding" || this.state === "menu" || this.state === "campaignMap" || this.state === "briefing" || this.state === "hangar" || this.state === "gameOver") {
-      this.obstacles.setMode(this.state === "boarding" ? "boarding" : "preview");
+    if (this.state === "boarding") {
+      this.obstacles.setMode("boarding");
       this.character.setVisible(true);
       this.player.setVisible(true);
     } else if (this.state === "launch") {
@@ -661,6 +714,10 @@ export class Game {
       this.obstacles.setMode("arrival");
       this.character.setVisible(true);
       this.player.setVisible(true);
+    } else {
+      this.obstacles.setMode("preview");
+      this.character.setVisible(true);
+      this.player.setVisible(true);
     }
   }
 
@@ -669,216 +726,188 @@ export class Game {
     const lookAt = new this.THREE.Vector3();
 
     if (this.state === "boarding") {
-      targetPosition.set(this.character.position.x - 10, 14, this.character.position.z + 14);
-      lookAt.set(this.character.position.x, 1.6, this.character.position.z);
-    } else if (this.state === "launch" || this.state === "routeFlight" || this.state === "docking") {
-      targetPosition.set(this.player.position.x - 26, this.player.position.y + 13, this.player.position.z + 16);
-      lookAt.set(this.player.position.x + 14, this.player.position.y + 2, this.player.position.z);
+      const midpointX = (this.character.position.x + this.player.position.x) * 0.5;
+      const midpointZ = (this.character.position.z + this.player.position.z) * 0.5;
+      targetPosition.set(midpointX - 28, 25, midpointZ + 26);
+      lookAt.set(midpointX + 4, 3.8, midpointZ - 2);
+    } else if (this.state === "launch") {
+      if (!this.run.launchAuthorized) {
+        targetPosition.set(this.player.position.x - 24, this.player.position.y + 16, this.player.position.z + 18);
+        lookAt.set(this.player.position.x + 4, this.player.position.y + 3, this.player.position.z);
+      } else {
+        this.getShipCamera(targetPosition, lookAt, 11, 7);
+      }
+    } else if (this.state === "routeFlight" || this.state === "docking") {
+      this.getShipCamera(targetPosition, lookAt, 12.5, 7.5);
     } else if (this.state === "wormholeTransit") {
-      targetPosition.set(this.player.position.x - 20, this.player.position.y + 10, this.player.position.z + 12);
-      lookAt.set(this.player.position.x + 8, this.player.position.y + 1, this.player.position.z);
+      this.getShipCamera(targetPosition, lookAt, 10, 6);
+      targetPosition.y += Math.sin(this.time * 10) * 0.8;
     } else if (this.state === "arrival" || this.state === "results") {
-      targetPosition.set(this.character.position.x - 10, 14, this.character.position.z + 14);
-      lookAt.set(this.character.position.x, 1.6, this.character.position.z);
+      targetPosition.set(this.character.position.x - 16, 16, this.character.position.z + 18);
+      lookAt.set(this.character.position.x + 8, 2.5, this.character.position.z - 2);
     } else {
       const departure = this.obstacles.getDepartureWorld();
-      targetPosition.set(departure.shipSpawn.x + 18, 24, departure.shipSpawn.z + 34);
-      lookAt.set(departure.shipSpawn.x + 6, 4, departure.shipSpawn.z);
+      targetPosition.set(departure.shipSpawn.x - 24, 18, departure.shipSpawn.z + 30);
+      lookAt.set(departure.shipSpawn.x + 3, 4.2, departure.shipSpawn.z);
     }
 
-    this.camera.position.lerp(targetPosition, clamp(deltaTime * 3.2, 0, 1));
-    this.cameraTarget.lerp(lookAt, clamp(deltaTime * 4.2, 0, 1));
+    this.camera.position.lerp(targetPosition, clamp(deltaTime * 2.8, 0, 1));
+    this.cameraTarget.lerp(lookAt, clamp(deltaTime * 3.5, 0, 1));
     this.camera.lookAt(this.cameraTarget);
+  }
+
+  getShipCamera(targetPosition, lookAt, distance, height) {
+    const orientation = this.player.getTelemetry().orientation;
+    const directionX = Math.cos(orientation);
+    const directionZ = Math.sin(orientation);
+    targetPosition.set(
+      this.player.position.x - directionX * distance - directionZ * 2.5,
+      this.player.position.y + height,
+      this.player.position.z - directionZ * distance + directionX * 2.5
+    );
+    lookAt.set(
+      this.player.position.x + directionX * 14,
+      this.player.position.y + 2.6,
+      this.player.position.z + directionZ * 14
+    );
   }
 
   render() {
     this.renderer.render(this.scene, this.camera);
   }
 
-  renderPanel() {
+  renderUI() {
     const {
+      panelCard,
+      hud,
       titleEl,
       copyEl,
       statusLabel,
       scoreLabel,
       objectiveLabel,
+      promptLabel,
       detailsEl,
       upgradesEl,
+      fuelFillEl,
+      fuelValueEl,
+      progressFillEl,
+      progressValueEl,
       startButton,
       restartButton
     } = this.controlsRef;
 
-    scoreLabel.textContent = `Credits: ${this.save.credits}`;
+    if (this.state === "menu") {
+      this.statusText = "Freight command online.";
+      this.objectiveText = "Review the next contract.";
+      this.promptText = "Begin when ready.";
+    } else if (this.state === "briefing") {
+      this.statusText = `Mission packet ready for ${this.segment.name}.`;
+      this.objectiveText = "Review the route and begin boarding.";
+      this.promptText = "Start when ready.";
+    } else if (this.state === "results") {
+      this.statusText = `Run complete. Earned ${this.summary?.total ?? 0} credits.`;
+      this.objectiveText = "Move to hangar or prep the next contract.";
+      this.promptText = "Mission accomplished.";
+    } else if (this.state === "hangar") {
+      this.statusText = `Available credits: ${this.save.credits}`;
+      this.objectiveText = "Upgrade the freighter for the next route.";
+      this.promptText = "Select an upgrade or continue.";
+    } else if (this.state === "gameOver") {
+      this.statusText = this.summary?.reason ?? "Route failed.";
+      this.objectiveText = "Retry the route or return to command.";
+      this.promptText = "Mission lost.";
+    }
+
+    const maxFuel = safeNumber(this.getDerivedStats().maxFuel, 45);
+    const routeProgress = clamp(this.run.routeProgress / Math.max(this.obstacles.getRouteLength(), 1), 0, 1);
+    const fuelRatio = clamp(safeNumber(this.run.fuel, maxFuel) / Math.max(maxFuel, 1), 0, 1);
+
+    scoreLabel.textContent = `${this.save.credits}`;
+    statusLabel.textContent = this.statusText;
+    objectiveLabel.textContent = this.objectiveText;
+    promptLabel.textContent = this.promptText;
+    fuelValueEl.textContent = `${Math.round(safeNumber(this.run.fuel, maxFuel))} / ${Math.round(maxFuel)}`;
+    progressValueEl.textContent = `${Math.round(routeProgress * 100)}%`;
+    fuelFillEl.style.width = `${fuelRatio * 100}%`;
+    progressFillEl.style.width = `${routeProgress * 100}%`;
+    fuelFillEl.style.background =
+      fuelRatio > 0.45
+        ? "linear-gradient(90deg, #38bdf8, #0ea5e9)"
+        : fuelRatio > 0.18
+          ? "linear-gradient(90deg, #f59e0b, #f97316)"
+          : "linear-gradient(90deg, #fb7185, #ef4444)";
+
+    const gameplayState =
+      this.state === "boarding" ||
+      this.state === "launch" ||
+      this.state === "routeFlight" ||
+      this.state === "docking" ||
+      this.state === "wormholeTransit" ||
+      this.state === "arrival";
+
+    panelCard.classList.toggle("hidden", gameplayState);
+    hud.classList.toggle("hidden", !gameplayState);
+
+    if (gameplayState) {
+      return;
+    }
+
     detailsEl.innerHTML = "";
     upgradesEl.innerHTML = "";
 
     if (this.state === "menu") {
-      titleEl.textContent = "Ozscape";
-      copyEl.textContent = "Walk the cargo port as a courier, board your freighter, then fly dangerous 3D long-haul routes across deep space.";
-      statusLabel.textContent = "Freight command online.";
-      objectiveLabel.textContent = "Objective: Open the campaign map.";
+      titleEl.textContent = this.segment.name;
+      copyEl.textContent = "A cinematic freight run is standing by. Start on foot at the port, board your ship, then punch through hazards, stations, and wormholes in full-screen 3D.";
+      this.addDetail(detailsEl, `Departure world: ${this.segment.departure.planetLabel}`);
       this.addDetail(detailsEl, `Unlocked routes: ${this.save.unlockedSegments} / ${SEGMENTS.length}`);
-      this.addDetail(detailsEl, `Completed runs: ${this.save.completedRuns}`);
+      this.addDetail(detailsEl, `Completed contracts: ${this.save.completedRuns}`);
       this.addDetail(detailsEl, `Best payout: ${this.save.bestCredits} credits`);
-      this.addDetail(detailsEl, `Current departure world: ${this.segment.departure.planetLabel}`);
-      startButton.textContent = "Open Campaign";
+      startButton.textContent = "Open Briefing";
       startButton.disabled = false;
-      restartButton.textContent = "Reset Command";
+      restartButton.textContent = "Open Hangar";
       restartButton.disabled = false;
-      return;
-    }
-
-    if (this.state === "campaignMap") {
-      titleEl.textContent = "Campaign Map";
-      copyEl.textContent = this.segment.subtitle;
-      statusLabel.textContent = `Selected route: ${this.segment.name}`;
-      objectiveLabel.textContent = "Objective: Cycle routes or enter briefing.";
-      this.addDetail(detailsEl, `Base reward: ${this.segment.baseReward} credits`);
-      this.addDetail(detailsEl, `Departure: ${this.segment.departure.portLabel}`);
-      this.addDetail(detailsEl, `Refuel station: ${this.segment.stationLabel}`);
-      this.addDetail(detailsEl, `Destination: ${this.segment.destinationLabel}`);
-      startButton.textContent = "Mission Briefing";
-      startButton.disabled = false;
-      restartButton.textContent = "Next Route";
-      restartButton.disabled = this.save.unlockedSegments <= 1;
       return;
     }
 
     if (this.state === "briefing") {
       titleEl.textContent = this.segment.name;
-      copyEl.textContent = `${this.segment.briefing} First, cross ${this.segment.departure.portLabel} on foot and board the ship.`;
-      statusLabel.textContent = "Mission packet received.";
-      objectiveLabel.textContent = `Objective: Courier boarding, ship launch, station refuel, then ${this.segment.destinationLabel}.`;
-      this.addDetail(detailsEl, `Departure world: ${this.segment.departure.planetLabel}`);
-      this.addDetail(detailsEl, `Planets on route: ${this.segment.planets.length}`);
-      this.addDetail(detailsEl, `Hazard zones: ${this.segment.gravityZones.length + this.segment.ionZones.length}`);
-      this.addDetail(detailsEl, `Wormhole: ${this.segment.wormhole ? "Available after station" : "None"}`);
-      startButton.textContent = "Start Boarding";
+      copyEl.textContent = `${this.segment.briefing} You begin as the courier on the surface port, then launch the freighter yourself.`;
+      this.addDetail(detailsEl, `Route: ${this.segment.subtitle}`);
+      this.addDetail(detailsEl, `Mandatory refuel: ${this.segment.stationLabel}`);
+      this.addDetail(detailsEl, `Destination: ${this.segment.destinationLabel}`);
+      this.addDetail(detailsEl, `Wormhole bonus: ${this.segment.wormhole ? `${this.segment.wormhole.rewardBonus} credits` : "None"}`);
+      startButton.textContent = "Begin Boarding";
       startButton.disabled = false;
       restartButton.textContent = "Back";
       restartButton.disabled = false;
       return;
     }
 
-    if (this.state === "boarding") {
-      titleEl.textContent = this.segment.departure.portLabel;
-      copyEl.textContent = "You are on foot in a basic 3D cargo port. Walk to cargo check, secure the package manifest, then board the parked freighter.";
-      statusLabel.textContent = this.run.cargoSecured ? "Cargo signed off. Move to the ramp." : "Courier has not secured the cargo yet.";
-      objectiveLabel.textContent = this.run.cargoSecured ? "Objective: Reach the boarding ramp." : "Objective: Reach cargo check.";
-      this.addDetail(detailsEl, `World: ${this.segment.departure.planetLabel}`);
-      this.addDetail(detailsEl, `Cargo progress: ${Math.round(clamp(this.run.cargoProgress / 1.2, 0, 1) * 100)}%`);
-      this.addDetail(detailsEl, `Boarding progress: ${Math.round(clamp(this.run.boardingProgress / 1.15, 0, 1) * 100)}%`);
-      this.addDetail(detailsEl, `Visible ship: Parked on the pad`);
-      startButton.textContent = "Boarding";
-      startButton.disabled = true;
-      restartButton.textContent = "Boarding";
-      restartButton.disabled = true;
-      return;
-    }
-
-    if (this.state === "launch") {
-      titleEl.textContent = "Launch Corridor";
-      copyEl.textContent = "You are in the ship now. Lift off through the departure lane and push into open space.";
-      statusLabel.textContent = "Launch clearance granted.";
-      objectiveLabel.textContent = "Objective: Clear the port and enter the route.";
-      this.addDetail(detailsEl, `Launch progress: ${Math.round(this.run.launchProgress * 100)}%`);
-      this.addDetail(detailsEl, `Fuel: ${Math.round(this.run.fuel)} / ${Math.round(this.getDerivedStats().maxFuel)}`);
-      this.addDetail(detailsEl, `Courier status: Boarded`);
-      startButton.textContent = "Launching";
-      startButton.disabled = true;
-      restartButton.textContent = "Launching";
-      restartButton.disabled = true;
-      return;
-    }
-
-    if (this.state === "routeFlight") {
-      const maxFuel = this.getDerivedStats().maxFuel;
-      titleEl.textContent = this.segment.name;
-      copyEl.textContent = "Fly the freighter through the 3D route, avoid debris, refuel at station, and decide whether to gamble on the wormhole.";
-      statusLabel.textContent = this.run.stationCompleted ? "Station complete. Destination gate active." : `Approach ${this.segment.stationLabel} for refuel.`;
-      objectiveLabel.textContent = this.run.stationCompleted ? `Objective: Reach ${this.segment.destinationLabel}.` : `Objective: Dock at ${this.segment.stationLabel}.`;
-      this.addDetail(detailsEl, `Route progress: ${Math.round(clamp(this.run.routeProgress / this.obstacles.getRouteLength(), 0, 1) * 100)}%`);
-      this.addDetail(detailsEl, `Fuel remaining: ${Math.round(this.run.fuel)} / ${Math.round(maxFuel)}`);
-      this.addDetail(detailsEl, `Hazard exposure: ${this.run.hazardExposure.toFixed(1)}s`);
-      this.addDetail(detailsEl, `Wormhole: ${this.run.wormholeUsed ? "Used" : "Available after station"}`);
-      startButton.textContent = "In Flight";
-      startButton.disabled = true;
-      restartButton.textContent = "Route Active";
-      restartButton.disabled = true;
-      return;
-    }
-
-    if (this.state === "docking") {
-      titleEl.textContent = "Docking";
-      copyEl.textContent = "Hold position while the station refuels the ship.";
-      statusLabel.textContent = "Docking clamps engaged.";
-      objectiveLabel.textContent = "Objective: Await refuel completion.";
-      this.addDetail(detailsEl, `Refuel cycle: ${this.run.dockingTimer.toFixed(1)}s`);
-      this.addDetail(detailsEl, `Route progress: ${Math.round(clamp(this.run.routeProgress / this.obstacles.getRouteLength(), 0, 1) * 100)}%`);
-      startButton.textContent = "Docking";
-      startButton.disabled = true;
-      restartButton.textContent = "Docking";
-      restartButton.disabled = true;
-      return;
-    }
-
-    if (this.state === "wormholeTransit") {
-      titleEl.textContent = "Wormhole Transit";
-      copyEl.textContent = "The ship is compressing through unstable space. Hold course while the corridor spits you back out farther down the route.";
-      statusLabel.textContent = "Wormhole corridor engaged.";
-      objectiveLabel.textContent = "Objective: Survive transit.";
-      this.addDetail(detailsEl, `Transit time: ${this.run.wormholeTimer.toFixed(1)}s`);
-      this.addDetail(detailsEl, `Projected bonus: ${this.segment.wormhole.rewardBonus} credits`);
-      startButton.textContent = "Transit";
-      startButton.disabled = true;
-      restartButton.textContent = "Transit";
-      restartButton.disabled = true;
-      return;
-    }
-
-    if (this.state === "arrival") {
-      titleEl.textContent = "Arrival Hub";
-      copyEl.textContent = "The ship has landed. Step out as the courier and walk to the delivery office to finalize the contract.";
-      statusLabel.textContent = "Ship landed. Final handoff pending.";
-      objectiveLabel.textContent = "Objective: Walk to the delivery office.";
-      this.addDetail(detailsEl, `Arrival progress: ${Math.round(this.run.arrivalProgress * 100)}%`);
-      this.addDetail(detailsEl, `Contract value: ${this.summary.total} credits`);
-      this.addDetail(detailsEl, `Destination: ${this.segment.destinationLabel}`);
-      startButton.textContent = "Delivering";
-      startButton.disabled = true;
-      restartButton.textContent = "Delivering";
-      restartButton.disabled = true;
-      return;
-    }
-
     if (this.state === "results") {
-      titleEl.textContent = "Results";
-      copyEl.textContent = "The drop is complete. Review the payout and move into hangar prep for the next run.";
-      statusLabel.textContent = `Run complete. Earned ${this.summary.total} credits.`;
-      objectiveLabel.textContent = "Objective: Review rewards or continue to hangar.";
+      titleEl.textContent = this.summary.title;
+      copyEl.textContent = "The route is complete. Review the breakdown, tune the freighter in hangar, then take the next contract.";
       this.addDetail(detailsEl, `Base reward: ${this.summary.baseReward}`);
-      this.addDetail(detailsEl, `Fuel efficiency bonus: ${this.summary.fuelBonus}`);
+      this.addDetail(detailsEl, `Fuel bonus: ${this.summary.fuelBonus}`);
       this.addDetail(detailsEl, `Docking bonus: ${this.summary.dockingBonus}`);
-      this.addDetail(detailsEl, `Hazard control bonus: ${this.summary.hazardBonus}`);
+      this.addDetail(detailsEl, `Hazard bonus: ${this.summary.hazardBonus}`);
       this.addDetail(detailsEl, `Wormhole bonus: ${this.summary.shortcutBonus}`);
+      this.addDetail(detailsEl, `Total payout: ${this.summary.total}`);
       startButton.textContent = "Open Hangar";
       startButton.disabled = false;
-      restartButton.textContent = "Campaign Map";
+      restartButton.textContent = "Next Briefing";
       restartButton.disabled = false;
       return;
     }
 
     if (this.state === "hangar") {
       titleEl.textContent = "Hangar";
-      copyEl.textContent = "Spend credits to improve the ship before the next 3D route.";
-      statusLabel.textContent = `Available credits: ${this.save.credits}`;
-      objectiveLabel.textContent = "Objective: Upgrade the freighter or return to the map.";
+      copyEl.textContent = "Spend credits on a heavier, cleaner, more capable freighter before the next route.";
       UPGRADE_DEFS.forEach((upgrade) => {
-        const card = document.createElement("div");
-        card.className = "upgrade-card";
         const level = this.save.upgrades[upgrade.key];
         const cost = this.getUpgradeCost(upgrade.key);
         const canAfford = this.save.credits >= cost;
+        const card = document.createElement("div");
+        card.className = "upgrade-card";
         card.innerHTML = `<h3>${upgrade.name} Mk.${level + 1}</h3><p>${upgrade.description}</p>`;
         const button = document.createElement("button");
         button.textContent = `${canAfford ? "Upgrade" : "Need"} ${cost} cr`;
@@ -887,7 +916,7 @@ export class Game {
         card.appendChild(button);
         upgradesEl.appendChild(card);
       });
-      startButton.textContent = "Campaign Map";
+      startButton.textContent = "Next Contract";
       startButton.disabled = false;
       restartButton.textContent = "Back to Menu";
       restartButton.disabled = false;
@@ -896,16 +925,14 @@ export class Game {
 
     if (this.state === "gameOver") {
       titleEl.textContent = "Route Failed";
-      copyEl.textContent = "The cargo run was lost before delivery. Review the summary, then relaunch with a cleaner route.";
-      statusLabel.textContent = this.summary.reason;
-      objectiveLabel.textContent = "Objective: Retry the route or return to campaign command.";
+      copyEl.textContent = "The cargo run collapsed before delivery. The freighter needs a cleaner line on the next attempt.";
+      this.addDetail(detailsEl, this.summary.reason);
       this.addDetail(detailsEl, `Fallback credits: ${this.summary.total}`);
-      this.addDetail(detailsEl, `Route progress: ${Math.round(clamp(this.run.routeProgress / Math.max(this.obstacles.getRouteLength(), 1), 0, 1) * 100)}%`);
-      this.addDetail(detailsEl, `Station reached: ${this.run.stationCompleted ? "Yes" : "No"}`);
-      this.addDetail(detailsEl, `Wormhole used: ${this.run.wormholeUsed ? "Yes" : "No"}`);
+      this.addDetail(detailsEl, `Route progress: ${Math.round(routeProgress * 100)}%`);
+      this.addDetail(detailsEl, `Station completed: ${this.run.stationCompleted ? "Yes" : "No"}`);
       startButton.textContent = "Retry Briefing";
       startButton.disabled = false;
-      restartButton.textContent = "Campaign Map";
+      restartButton.textContent = "Back to Menu";
       restartButton.disabled = false;
     }
   }
@@ -924,7 +951,7 @@ export class Game {
     const fuelTank = safeInteger(upgrades.fuelTank);
     const handling = safeInteger(upgrades.handling);
     return {
-      cruiseSpeed: 104 + engine * 11,
+      cruiseSpeed: 96 + engine * 10,
       maxFuel: Math.max(1, 45 + fuelTank * 12),
       handlingFactor: 1 + handling * 0.1,
       dockingAssist: durability * 0.24 + handling * 0.1,
@@ -949,7 +976,7 @@ export class Game {
     this.save.credits -= cost;
     this.save.upgrades[key] += 1;
     this.persistSave();
-    this.renderPanel();
+    this.renderUI();
   }
 
   createEmptyRun() {
@@ -961,17 +988,17 @@ export class Game {
       cargoSecured: false,
       boardingProgress: 0,
       launchProgress: 0,
+      launchAuthorized: false,
       arrivalProgress: 0,
-      dockingProgress: 0,
       dockingTimer: 0,
       dockingQuality: 1,
       stationCompleted: false,
       hazardExposure: 0,
       softPenalty: 0,
-      wormholeAlignment: 0,
       wormholeTimer: 0,
       wormholeUsed: false,
-      shortcutBonus: 0
+      shortcutBonus: 0,
+      onFootSpeed: 0
     };
   }
 
@@ -1007,6 +1034,6 @@ export class Game {
   resetSave() {
     this.save = defaultSave();
     this.persistSave();
-    this.renderPanel();
+    this.renderUI();
   }
 }

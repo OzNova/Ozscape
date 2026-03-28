@@ -6,32 +6,81 @@
     <title>Ozscape</title>
     <meta
       name="description"
-      content="Ozscape is a futuristic space cargo delivery game set across dangerous deep-space routes."
+      content="Ozscape is a futuristic 3D space cargo delivery game set across dangerous deep-space routes."
     />
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <main class="layout">
-      <section class="panel">
-        <p class="eyebrow">Ozscape Freight Command</p>
-        <h1 id="panelTitle">Ozscape</h1>
-        <p id="panelCopy" class="copy">
-          Deliver high-value cargo across a hazardous interstellar route and return with enough credits to upgrade your ship.
-        </p>
-        <div class="hud">
-          <span id="status">Initializing command uplink.</span>
-          <span id="score">Credits: 0</span>
-          <span id="objective">Objective: Await mission selection.</span>
+    <canvas id="gameCanvas" aria-label="Ozscape 3D game canvas"></canvas>
+
+    <div class="screen-vignette"></div>
+
+    <div class="ui-layer">
+      <header class="topbar">
+        <div class="brand-block">
+          <p class="eyebrow">Ozscape Freight Command</p>
+          <h1 class="brand-title">Ozscape</h1>
         </div>
+        <div class="topbar-meta">
+          <div class="meta-chip">
+            <span class="meta-label">Status</span>
+            <span id="status">Initializing command uplink.</span>
+          </div>
+          <div class="meta-chip">
+            <span class="meta-label">Credits</span>
+            <span id="score">0</span>
+          </div>
+        </div>
+      </header>
+
+      <section id="hud" class="hud hidden">
+        <div class="hud-panel hud-bars">
+          <div class="meter">
+            <div class="meter-head">
+              <span>Fuel</span>
+              <strong id="fuelValue">0 / 0</strong>
+            </div>
+            <div class="meter-track">
+              <div id="fuelFill" class="meter-fill fuel-fill"></div>
+            </div>
+          </div>
+          <div class="meter">
+            <div class="meter-head">
+              <span>Route</span>
+              <strong id="progressValue">0%</strong>
+            </div>
+            <div class="meter-track">
+              <div id="progressFill" class="meter-fill progress-fill"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hud-panel hud-objective">
+          <p class="hud-label">Objective</p>
+          <p id="objective">Await mission command.</p>
+        </div>
+
+        <div class="hud-panel hud-prompt">
+          <p class="hud-label">Prompt</p>
+          <p id="prompt">Stand by.</p>
+        </div>
+      </section>
+
+      <section id="panelCard" class="panel-card">
+        <p class="eyebrow">Mission Control</p>
+        <h2 id="panelTitle">Ozscape</h2>
+        <p id="panelCopy" class="copy">
+          Deliver high-value cargo across dangerous interstellar routes.
+        </p>
         <div id="details" class="details"></div>
         <div id="upgrades" class="upgrades"></div>
         <div class="actions">
-          <button id="startButton" type="button">Open Campaign</button>
-          <button id="restartButton" type="button">Reset Command</button>
+          <button id="startButton" type="button">Begin</button>
+          <button id="restartButton" type="button">Reset</button>
         </div>
       </section>
-      <canvas id="gameCanvas" width="1280" height="720" aria-label="Ozscape game canvas"></canvas>
-    </main>
+    </div>
+
     <script type="module" src="./script.js"></script>
   </body>
 </html>
