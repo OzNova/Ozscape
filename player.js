@@ -180,6 +180,9 @@ export class PlayerCharacter {
     const forwardInput = (input.w ? 1 : 0) - (input.s ? 1 : 0);
     const strafeInput = (input.d ? 1 : 0) - (input.a ? 1 : 0);
     const moveMagnitude = Math.hypot(forwardInput, strafeInput);
+    const sprinting = !!input.shift;
+    const acceleration = this.baseAcceleration * (sprinting ? 1.55 : 1);
+    const maxSpeed = this.baseSpeed * (sprinting ? 1.9 : 1);
 
     if (moveMagnitude > 0) {
       const forwardX = Math.cos(yaw);
@@ -188,10 +191,10 @@ export class PlayerCharacter {
       const rightZ = Math.sin(yaw + Math.PI / 2);
       const desiredX = (forwardX * forwardInput + rightX * strafeInput) / moveMagnitude;
       const desiredZ = (forwardZ * forwardInput + rightZ * strafeInput) / moveMagnitude;
-      this.velocity.x += desiredX * this.baseAcceleration * deltaTime;
-      this.velocity.z += desiredZ * this.baseAcceleration * deltaTime;
-      this.walkCycle += deltaTime * 9.8;
-      this.headBob = Math.sin(this.walkCycle) * 0.045;
+      this.velocity.x += desiredX * acceleration * deltaTime;
+      this.velocity.z += desiredZ * acceleration * deltaTime;
+      this.walkCycle += deltaTime * (sprinting ? 14.5 : 9.8);
+      this.headBob = Math.sin(this.walkCycle) * (sprinting ? 0.065 : 0.045);
     } else {
       this.headBob *= Math.exp(-10 * deltaTime);
     }
@@ -204,8 +207,8 @@ export class PlayerCharacter {
     this.velocity.z *= damping;
 
     const speed = Math.hypot(this.velocity.x, this.velocity.z);
-    if (speed > this.baseSpeed) {
-      const scale = this.baseSpeed / speed;
+    if (speed > maxSpeed) {
+      const scale = maxSpeed / speed;
       this.velocity.x *= scale;
       this.velocity.z *= scale;
     }
@@ -217,7 +220,8 @@ export class PlayerCharacter {
 
     return {
       moving: moveMagnitude > 0,
-      speed: Math.hypot(this.velocity.x, this.velocity.z)
+      speed: Math.hypot(this.velocity.x, this.velocity.z),
+      sprinting
     };
   }
 

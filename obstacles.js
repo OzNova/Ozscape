@@ -8,8 +8,9 @@ export class ObstacleManager {
     this.root = new THREE.Group();
     this.departureGroup = new THREE.Group();
     this.flightGroup = new THREE.Group();
+    this.hubGroup = new THREE.Group();
     this.arrivalGroup = new THREE.Group();
-    this.root.add(this.departureGroup, this.flightGroup, this.arrivalGroup);
+    this.root.add(this.departureGroup, this.flightGroup, this.hubGroup, this.arrivalGroup);
     this.scene.add(this.root);
 
     this.routeScale = 0.24;
@@ -21,9 +22,13 @@ export class ObstacleManager {
     this.ionZones = [];
     this.planets = [];
     this.station = null;
+    this.stopovers = [];
+    this.optionalTasks = [];
     this.gate = null;
     this.wormhole = null;
     this.navigationBeacons = {};
+    this.activeHubKey = null;
+    this.activeHubWorld = null;
     this.segment = null;
     this.segmentWorld = null;
   }
@@ -56,12 +61,17 @@ export class ObstacleManager {
     this.ionZones = [];
     this.planets = [];
     this.station = null;
+    this.stopovers = [];
+    this.optionalTasks = [];
     this.gate = null;
     this.wormhole = null;
     this.navigationBeacons = {};
+    this.activeHubKey = null;
+    this.activeHubWorld = null;
 
     this.clearGroup(this.departureGroup);
     this.clearGroup(this.flightGroup);
+    this.clearGroup(this.hubGroup);
     this.clearGroup(this.arrivalGroup);
 
     this.createDepartureWorld();
@@ -109,6 +119,24 @@ export class ObstacleManager {
         }
       : null;
 
+    const stopovers = (segment.stopovers ?? []).map((stopover, index) => ({
+      ...stopover,
+      x: routeStartX + scaleX(stopover.worldX),
+      z: this.toRouteZ(stopover.worldY),
+      bodyRadius: stopover.bodyRadius * 0.28,
+      zoneDepth: stopover.zoneWidth * 0.22,
+      zoneHeight: stopover.zoneHeight * 0.2,
+      index,
+      flightExitX: routeStartX + scaleX(stopover.hub.resumeX ?? stopover.worldX + 320)
+    }));
+
+    const optionalTasks = (segment.optionalTasks ?? []).map((task) => ({
+      ...task,
+      x: routeStartX + scaleX(task.worldX),
+      z: this.toRouteZ(task.worldY),
+      radius: task.radius * 0.18
+    }));
+
     return {
       departure,
       routeStartX,
@@ -126,11 +154,19 @@ export class ObstacleManager {
         width: segment.gate.width * 0.28,
         height: segment.gate.height * 0.14
       },
+      stopovers,
+      optionalTasks,
       wormhole,
       arrival: {
-        characterSpawn: new this.THREE.Vector3(-18, 1.2, 12),
-        shipSpawn: new this.THREE.Vector3(10, 3.8, -14),
-        deliveryZone: { minX: 24, maxX: 38, minZ: -2, maxZ: 12 }
+        title: segment.arrival?.title ?? segment.destinationLabel,
+        subtitle: segment.arrival?.subtitle ?? "Delivery Office",
+        optionalLabel: segment.arrival?.optionalLabel ?? "Cargo Registry",
+        optionalReward: segment.arrival?.optionalReward ?? 0,
+        characterSpawn: new this.THREE.Vector3(-28, 1.2, 18),
+        shipSpawn: new this.THREE.Vector3(18, 3.8, -16),
+        deliveryZone: { minX: 24, maxX: 44, minZ: -2, maxZ: 14 },
+        optionalZone: { minX: -56, maxX: -30, minZ: -18, maxZ: 6 },
+        boardZone: { minX: 10, maxX: 34, minZ: -26, maxZ: -8 }
       }
     };
   }
@@ -582,11 +618,32 @@ export class ObstacleManager {
       });
     });
 
-    this.station = this.createStationObject();
-    this.flightGroup.add(this.station.mesh);
-    this.navigationBeacons.station = this.createNavigationBeacon("Station", 0x38bdf8, 26);
-    this.navigationBeacons.station.position.set(this.station.x, 18, this.station.z);
-    this.flightGroup.add(this.navigationBeacons.station);
+    this.stopovers = this.segmentWorld.stopovers.map((stopover, index) => {
+      const object = this.createStopoverObject(stopover, index);
+      this.flightGroup.add(object.mesh);
+      const beacon = this.createNavigationBeacon(index === 0 ? "Refuel" : "Relay", index === 0 ? 0x38bdf8 : 0xf59e0b, 34);
+      beacon.position.set(object.x, 24, object.z);
+      this.flightGroup.add(beacon);
+      this.navigationBeacons[`stopover-${stopover.id}`] = beacon;
+      return object;
+    });
+    this.station = this.stopovers[0] ?? this.createStationObject();
+    if (this.stopovers.length === 0) {
+      this.flightGroup.add(this.station.mesh);
+      this.navigationBeacons.station = this.createNavigationBeacon("Station", 0x38bdf8, 26);
+      this.navigationBeacons.station.position.set(this.station.x, 18, this.station.z);
+      this.flightGroup.add(this.navigationBeacons.station);
+    }
+
+    this.optionalTasks = this.segmentWorld.optionalTasks.map((task) => {
+      const marker = this.createOptionalTaskMarker(task);
+      this.flightGroup.add(marker.mesh);
+      const beacon = this.createNavigationBeacon("Bonus", 0xfacc15, 22);
+      beacon.position.set(task.x, 14, task.z);
+      this.flightGroup.add(beacon);
+      this.navigationBeacons[`task-${task.id}`] = beacon;
+      return { ...task, mesh: marker.mesh, beacon };
+    });
 
     this.gate = this.createGateObject();
     this.flightGroup.add(this.gate.mesh);
@@ -607,7 +664,7 @@ export class ObstacleManager {
     const THREE = this.THREE;
 
     const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(130, 72),
+      new THREE.CircleGeometry(210, 96),
       new THREE.MeshStandardMaterial({ color: 0x0c1322, roughness: 1, metalness: 0.05 })
     );
     ground.rotation.x = -Math.PI / 2;
@@ -615,44 +672,178 @@ export class ObstacleManager {
     this.arrivalGroup.add(ground);
 
     const port = new THREE.Mesh(
-      new THREE.BoxGeometry(36, 1.4, 22),
+      new THREE.BoxGeometry(54, 1.6, 28),
       new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.9 })
     );
-    port.position.set(10, 0.7, -8);
+    port.position.set(18, 0.8, -10);
     port.receiveShadow = true;
     this.arrivalGroup.add(port);
 
     const office = new THREE.Mesh(
-      new THREE.BoxGeometry(16, 10, 14),
+      new THREE.BoxGeometry(28, 16, 22),
       new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.92 })
     );
-    office.position.set(30, 5, 4);
+    office.position.set(40, 8, 10);
     office.castShadow = true;
     office.receiveShadow = true;
     this.arrivalGroup.add(office);
 
     const officeLight = new THREE.Mesh(
-      new THREE.BoxGeometry(2.2, 0.2, 6.4),
+      new THREE.BoxGeometry(4.2, 0.24, 12.4),
       new THREE.MeshBasicMaterial({ color: 0x34d399 })
     );
-    officeLight.position.set(30, 5, 7.1);
+    officeLight.position.set(40, 8, 20.1);
     this.arrivalGroup.add(officeLight);
 
+    for (let index = 0; index < 6; index += 1) {
+      const container = new THREE.Mesh(
+        new THREE.BoxGeometry(9, 6.2, 6.2),
+        new THREE.MeshStandardMaterial({ color: index % 2 === 0 ? 0x475569 : 0x334155, roughness: 0.9 })
+      );
+      container.position.set(-48 + (index % 3) * 10, 3.2 + Math.floor(index / 3) * 6.6, -12);
+      this.arrivalGroup.add(container);
+    }
+
     const street = new THREE.Mesh(
-      new THREE.BoxGeometry(58, 0.05, 12),
+      new THREE.BoxGeometry(92, 0.05, 14),
       new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.08 })
     );
-    street.position.set(6, 0.08, 2);
+    street.position.set(10, 0.08, 2);
     this.arrivalGroup.add(street);
 
     const planet = new THREE.Mesh(
-      new THREE.SphereGeometry(110, 42, 42),
+      new THREE.SphereGeometry(180, 42, 42),
       new THREE.MeshStandardMaterial({ color: 0x1d4ed8, emissive: 0x1e3a8a, emissiveIntensity: 0.7 })
     );
-    planet.position.set(-150, 70, -210);
+    planet.position.set(-220, 110, -320);
     this.arrivalGroup.add(planet);
 
     this.addZoneFrame(this.arrivalGroup, this.segmentWorld.arrival.deliveryZone, 0x34d399, "Deliver");
+    this.addZoneFrame(this.arrivalGroup, this.segmentWorld.arrival.optionalZone, 0xfacc15, "Locker");
+  }
+
+  buildHubWorld(stopover) {
+    const THREE = this.THREE;
+    const hub = stopover.hub;
+    this.clearGroup(this.hubGroup);
+
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(180, 84),
+      new THREE.MeshStandardMaterial({ color: 0x0c1425, roughness: 1, metalness: 0.04 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    this.hubGroup.add(ground);
+
+    const pad = new THREE.Mesh(
+      new THREE.BoxGeometry(46, 1.8, 26),
+      new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.88 })
+    );
+    pad.position.set(hub.shipSpawn.x, 0.9, hub.shipSpawn.z);
+    this.hubGroup.add(pad);
+
+    const office = new THREE.Mesh(
+      new THREE.BoxGeometry(24, 14, 18),
+      new THREE.MeshStandardMaterial({ color: 0x162033, roughness: 0.9 })
+    );
+    office.position.set(26, 7, 10);
+    this.hubGroup.add(office);
+
+    const containers = [
+      [-44, 3.2, -10],
+      [-34, 3.2, -10],
+      [-44, 9.8, -10],
+      [-60, 3.2, 10]
+    ];
+    containers.forEach(([x, y, z], index) => {
+      const container = new THREE.Mesh(
+        new THREE.BoxGeometry(8.4, 6.2, 6.2),
+        new THREE.MeshStandardMaterial({ color: index % 2 === 0 ? 0x475569 : 0x334155, roughness: 0.88 })
+      );
+      container.position.set(x, y, z);
+      this.hubGroup.add(container);
+    });
+
+    const skyline = new THREE.Mesh(
+      new THREE.CylinderGeometry(210, 250, 40, 84, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x13233c, roughness: 1, metalness: 0.04 })
+    );
+    skyline.position.set(0, -14, 0);
+    this.hubGroup.add(skyline);
+
+    const planet = new THREE.Mesh(
+      new THREE.SphereGeometry(140, 42, 42),
+      new THREE.MeshStandardMaterial({
+        color: stopover.kind === "refuel" ? 0x7c93c6 : 0xd9a441,
+        emissive: stopover.kind === "refuel" ? 0x223a6a : 0x7c2d12,
+        emissiveIntensity: 0.48
+      })
+    );
+    planet.position.set(-170, 94, -260);
+    this.hubGroup.add(planet);
+
+    this.addZoneFrame(this.hubGroup, hub.mandatoryZone, 0x34d399, "Task");
+    this.addZoneFrame(this.hubGroup, hub.optionalZone, 0xfacc15, "Bonus");
+    this.addZoneFrame(this.hubGroup, hub.boardZone, 0x67e8f9, "Return");
+    this.activeHubWorld = { ...hub, stopId: stopover.id, stopKind: stopover.kind };
+    this.activeHubKey = stopover.id;
+  }
+
+  createStopoverObject(stopover, index) {
+    const THREE = this.THREE;
+    const group = new THREE.Group();
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(stopover.bodyRadius, 4.2, 18, 64),
+      new THREE.MeshStandardMaterial({
+        color: index === 0 ? 0x7dd3fc : 0xfbbf24,
+        emissive: index === 0 ? 0x0f766e : 0x92400e,
+        emissiveIntensity: 0.34
+      })
+    );
+    ring.rotation.x = 0.42;
+
+    const hub = new THREE.Mesh(
+      new THREE.SphereGeometry(stopover.bodyRadius * 0.48, 26, 26),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, emissive: 0x2563eb, emissiveIntensity: 0.2 })
+    );
+
+    const dock = new THREE.Mesh(
+      new THREE.BoxGeometry(stopover.zoneDepth * 0.8, 2.6, stopover.zoneHeight * 0.44),
+      new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.82 })
+    );
+    dock.position.set(stopover.zoneDepth * 0.36, 0, 0);
+
+    const trussMaterial = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.86 });
+    for (let indexA = 0; indexA < 4; indexA += 1) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(2, stopover.bodyRadius * 1.6, 2), trussMaterial);
+      arm.position.set(
+        -stopover.bodyRadius * 0.9 + indexA * (stopover.bodyRadius * 0.6),
+        0,
+        indexA % 2 === 0 ? -stopover.bodyRadius * 0.72 : stopover.bodyRadius * 0.72
+      );
+      group.add(arm);
+    }
+
+    group.add(ring, hub, dock);
+    group.position.set(stopover.x, 0, stopover.z);
+    return { ...stopover, mesh: group };
+  }
+
+  createOptionalTaskMarker(task) {
+    const THREE = this.THREE;
+    const group = new THREE.Group();
+    const core = new THREE.Mesh(
+      new THREE.OctahedronGeometry(task.radius * 0.24, 0),
+      new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xca8a04, emissiveIntensity: 0.55 })
+    );
+    const halo = new THREE.Mesh(
+      new THREE.TorusGeometry(task.radius * 0.4, 0.9, 10, 30),
+      new THREE.MeshBasicMaterial({ color: 0xfde68a, transparent: true, opacity: 0.28 })
+    );
+    halo.rotation.x = Math.PI / 2;
+    group.add(core, halo);
+    group.position.set(task.x, 8, task.z);
+    return { ...task, mesh: group };
   }
 
   createStationObject() {
@@ -863,6 +1054,11 @@ export class ObstacleManager {
       zone.mesh.material.opacity = 0.08 + Math.sin(state.time * 1.6 + index) * 0.03;
     });
 
+    this.optionalTasks.forEach((task, index) => {
+      task.mesh.rotation.y += deltaTime * (0.7 + index * 0.04);
+      task.mesh.position.y = 8 + Math.sin(state.time * 1.8 + index) * 1.6;
+    });
+
     if (this.station) {
       this.station.mesh.rotation.y += deltaTime * 0.18;
     }
@@ -882,9 +1078,16 @@ export class ObstacleManager {
     });
   }
 
-  setMode(mode) {
+  setMode(mode, context = {}) {
+    if (mode === "hub" && context.stopover) {
+      if (this.activeHubKey !== context.stopover.id) {
+        this.buildHubWorld(context.stopover);
+      }
+    }
+
     this.departureGroup.visible = mode === "preview" || mode === "boarding" || mode === "launch";
     this.flightGroup.visible = mode === "flight" || mode === "wormhole" || mode === "launch";
+    this.hubGroup.visible = mode === "hub";
     this.arrivalGroup.visible = mode === "arrival";
   }
 
@@ -898,6 +1101,57 @@ export class ObstacleManager {
 
   getArrivalInfo(character) {
     return this.getZoneInfo(character.position, this.segmentWorld.arrival.deliveryZone);
+  }
+
+  getArrivalOptionalInfo(character) {
+    return this.getZoneInfo(character.position, this.segmentWorld.arrival.optionalZone);
+  }
+
+  getCurrentStopover(index) {
+    return this.stopovers[index] ?? null;
+  }
+
+  getStopoverInfo(ship, index) {
+    const stopover = this.stopovers[index];
+    if (!stopover) {
+      return { available: false, inZone: false, nearZone: false, alignment: 0 };
+    }
+    const dx = Math.abs(ship.position.x - stopover.x);
+    const dz = Math.abs(ship.position.z - stopover.z);
+    const inZone = dx <= stopover.zoneDepth / 2 && dz <= stopover.zoneHeight / 2;
+    return {
+      available: true,
+      stopover,
+      inZone,
+      nearZone: dx <= stopover.zoneDepth * 0.92 && dz <= stopover.zoneHeight * 0.92,
+      alignment: Math.max(0, 1 - dz / Math.max(stopover.zoneHeight / 2, 1))
+    };
+  }
+
+  getHubInteractionInfo(character, type) {
+    if (!this.activeHubWorld) {
+      return { inZone: false, nearZone: false, distance: Infinity };
+    }
+    const zone =
+      type === "mandatory"
+        ? this.activeHubWorld.mandatoryZone
+        : type === "optional"
+          ? this.activeHubWorld.optionalZone
+          : this.activeHubWorld.boardZone;
+    return this.getZoneInfo(character.position, zone);
+  }
+
+  getOptionalTaskInfo(ship, completedTaskIds = []) {
+    return (
+      this.optionalTasks.find((task) => {
+        if (completedTaskIds.includes(task.id)) {
+          return false;
+        }
+        const dx = task.x - ship.position.x;
+        const dz = task.z - ship.position.z;
+        return Math.hypot(dx, dz) <= task.radius;
+      }) ?? null
+    );
   }
 
   getDepartureForce(ship, progress = 0) {
@@ -1038,9 +1292,11 @@ export class ObstacleManager {
 
   getNavigationPoints(wormholeUsed = false) {
     return {
-      station: { x: this.station.x, z: this.station.z },
+      station: this.station ? { x: this.station.x, z: this.station.z } : null,
+      stopovers: this.stopovers.map((stopover) => ({ id: stopover.id, x: stopover.x, z: stopover.z })),
       gate: { x: this.gate.x, z: this.gate.z },
-      wormhole: this.wormhole && !wormholeUsed ? { x: this.wormhole.x, z: this.wormhole.z } : null
+      wormhole: this.wormhole && !wormholeUsed ? { x: this.wormhole.x, z: this.wormhole.z } : null,
+      optionalTasks: this.optionalTasks.map((task) => ({ id: task.id, x: task.x, z: task.z }))
     };
   }
 
