@@ -1551,9 +1551,9 @@ export class Game {
 
     if (this.state === "menu") {
       titleEl.textContent = this.segment.name;
-      copyEl.textContent = "Drop into one flagship grounded sci-fi freight contract: launch from a planet, cross a huge star system, land at multiple stopovers, and finish the run on foot at the far terminal.";
+      copyEl.textContent = "Launch from Khepri Prime, cross one giant star-system contract, complete stopovers, and finish the delivery at Helios Deep Terminal.";
       this.addDetail(detailsEl, `Departure world: ${this.segment.departure.planetLabel}`);
-      this.addDetail(detailsEl, `Flagship contract: ${this.segment.subtitle}`);
+      this.addDetail(detailsEl, `Contract: ${this.segment.subtitle}`);
       this.addDetail(detailsEl, `Completed contracts: ${this.save.completedRuns}`);
       this.addDetail(detailsEl, `Best payout: ${this.save.bestCredits} credits`);
       startButton.textContent = "Open Briefing";
@@ -1565,16 +1565,14 @@ export class Game {
 
     if (this.state === "briefing") {
       titleEl.textContent = this.segment.name;
-      copyEl.textContent = `${this.segment.briefing} You begin at the port on foot, log the cargo manifest, board the freighter, then carry the run across multiple stopovers before the final delivery.`;
-      this.addDetail(detailsEl, `Route: ${this.segment.subtitle}`);
+      copyEl.textContent = "Board on foot, launch through the atmosphere, hit the required stopovers, grab optional bonuses if you want them, and finish the contract at Helios.";
       this.addDetail(detailsEl, `Scaled distance: ${Math.round(this.obstacles.getRouteLength() - this.obstacles.getRouteStartX())} km`);
       this.addDetail(detailsEl, `Mandatory stop 1: ${this.segment.stopovers[0].label}`);
       this.addDetail(detailsEl, `Mandatory stop 2: ${this.segment.stopovers[1].label}`);
       this.addDetail(detailsEl, `Destination: ${this.segment.destinationLabel}`);
       this.addDetail(detailsEl, `Optional space bonuses: ${this.segment.optionalTasks.length}`);
       this.addDetail(detailsEl, `Wormhole bonus: ${this.segment.wormhole ? `${this.segment.wormhole.rewardBonus} credits` : "None"}`);
-      this.addDetail(detailsEl, "On foot: click view, WASD move, hold Shift to sprint, E interact, H help");
-      this.addDetail(detailsEl, "Ship: W/S thrust, A/D trim, Space rise, Shift descend, C camera cycle");
+      this.addDetail(detailsEl, "Controls: WASD, Shift sprint/descend, Space rise, E interact, C camera");
       startButton.textContent = "Begin Boarding";
       startButton.disabled = false;
       restartButton.textContent = "Back";
