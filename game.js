@@ -17,7 +17,7 @@ const SEGMENTS = [
     length: 8200,
     dockingDuration: 1.9,
     baseReward: 180,
-    fuelRewardFactor: 1.45,
+    fuelRewardFactor: 0.72,
     debrisFields: [
       { startX: 700, endX: 1500, top: 110, bottom: 610, count: 18 },
       { startX: 1700, endX: 2400, top: 150, bottom: 570, count: 16 },
@@ -64,7 +64,7 @@ const SEGMENTS = [
     length: 9300,
     dockingDuration: 2.1,
     baseReward: 220,
-    fuelRewardFactor: 1.58,
+    fuelRewardFactor: 0.78,
     debrisFields: [
       { startX: 860, endX: 1620, top: 160, bottom: 620, count: 16 },
       { startX: 2200, endX: 3200, top: 130, bottom: 580, count: 22 },
@@ -110,7 +110,7 @@ const SEGMENTS = [
     length: 10600,
     dockingDuration: 2.2,
     baseReward: 260,
-    fuelRewardFactor: 1.72,
+    fuelRewardFactor: 0.84,
     debrisFields: [
       { startX: 740, endX: 1700, top: 150, bottom: 610, count: 20 },
       { startX: 2200, endX: 3300, top: 130, bottom: 590, count: 24 },
@@ -190,17 +190,17 @@ export class Game {
     this.renderer.toneMappingExposure = 1.08;
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x020617, 0.0024);
+    this.scene.fog = new THREE.FogExp2(0x020617, 0.0032);
 
     this.camera = new THREE.PerspectiveCamera(70, 16 / 9, 0.08, 6000);
     this.cameraTarget = new THREE.Vector3();
     this.tempVectorA = new THREE.Vector3();
     this.tempVectorB = new THREE.Vector3();
 
-    this.scene.add(new THREE.HemisphereLight(0xb9e3ff, 0x0a1022, 1.42));
+    this.scene.add(new THREE.HemisphereLight(0xc7e5ff, 0x08101f, 1.5));
 
-    this.keyLight = new THREE.DirectionalLight(0xffffff, 1.6);
-    this.keyLight.position.set(120, 180, 80);
+    this.keyLight = new THREE.DirectionalLight(0xfff4c7, 1.85);
+    this.keyLight.position.set(-900, 520, -1600);
     this.keyLight.castShadow = true;
     this.keyLight.shadow.mapSize.set(2048, 2048);
     this.keyLight.shadow.camera.left = -260;
@@ -209,8 +209,8 @@ export class Game {
     this.keyLight.shadow.camera.bottom = -260;
     this.scene.add(this.keyLight);
 
-    this.fillLight = new THREE.PointLight(0x60a5fa, 1.18, 900);
-    this.fillLight.position.set(-80, 90, 120);
+    this.fillLight = new THREE.PointLight(0x60a5fa, 1.05, 1800);
+    this.fillLight.position.set(180, 220, 260);
     this.scene.add(this.fillLight);
 
     this.input = { w: false, a: false, s: false, d: false, space: false, shift: false, ctrl: false };
@@ -515,8 +515,8 @@ export class Game {
   }
 
   updateBoarding(deltaTime) {
-    this.scene.fog.density = 0.0046;
-    const movement = this.character.update(this.input, deltaTime, { minX: -76, maxX: 76, minZ: -42, maxZ: 42 }, this.look);
+    this.scene.fog.density = 0.0054;
+    const movement = this.character.update(this.input, deltaTime, { minX: -170, maxX: 170, minZ: -90, maxZ: 90 }, this.look);
     const cargo = this.obstacles.getCargoCheckpointInfo(this.character);
     const boarding = this.obstacles.getBoardingInfo(this.character);
     const interact = this.consumeInteract();
@@ -582,12 +582,12 @@ export class Game {
       this.input,
       deltaTime,
       {
-        minX: departure.shipSpawn.x - 2,
+        minX: departure.shipSpawn.x - 4,
         maxX: departure.departureLane.spaceBreakX + 24,
         minY: 3.8,
-        maxY: departure.departureLane.targetY + 34,
-        minZ: -24,
-        maxZ: 24
+        maxY: departure.departureLane.targetY + 60,
+        minZ: -52,
+        maxZ: 52
       },
       this.save.upgrades,
       launchForce,
@@ -595,7 +595,7 @@ export class Game {
     );
 
     this.run.fuel = clamp(
-      safeNumber(this.run.fuel, maxFuel) - (0.08 + (movement.thrusting ? 0.18 : 0) + (launchForce.dragPenalty ?? 0)) * deltaTime,
+      safeNumber(this.run.fuel, maxFuel) - (0.05 + (movement.thrusting ? 0.12 : 0) + (launchForce.dragPenalty ?? 0)) * deltaTime,
       0,
       maxFuel
     );
@@ -629,7 +629,7 @@ export class Game {
                 prompt: `Keep climbing and accelerating. ${this.segment.stationLabel} will become your primary target once you clear atmosphere.`
               }
             : {
-                status: "Exosphere break.",
+                status: "Orbital break underway.",
                 objective: `Leave the planet's atmosphere and align with the long-haul lane toward ${this.segment.stationLabel}.`,
                 prompt: `Follow the blue station beacon and prepare for deep-space cruise.`
               };
@@ -641,12 +641,12 @@ export class Game {
       : "Click the view to capture the camera, then continue the ascent.";
     this.scene.fog.density =
       launchForce.phase === "surface"
-        ? 0.0052
+        ? 0.0064
         : launchForce.phase === "lowerAtmosphere"
-          ? 0.0042
+          ? 0.0052
           : launchForce.phase === "upperAtmosphere"
-            ? 0.0031
-            : 0.00235;
+            ? 0.0036
+            : 0.0022;
 
     if (this.run.fuel <= 0) {
       this.failMission("Fuel reserves depleted during launch.");
@@ -655,7 +655,7 @@ export class Game {
 
     if (
       this.player.position.x >= departure.departureLane.spaceBreakX &&
-      this.player.position.y >= departure.departureLane.targetY * 0.92
+      this.player.position.y >= departure.departureLane.targetY * 0.88
     ) {
       this.state = "routeFlight";
       this.run.routeProgress = this.player.position.x;
@@ -665,7 +665,7 @@ export class Game {
   }
 
   updateRouteFlight(deltaTime) {
-    this.scene.fog.density += (0.00155 - this.scene.fog.density) * clamp(deltaTime * 2.2, 0, 1);
+    this.scene.fog.density += (0.00105 - this.scene.fog.density) * clamp(deltaTime * 2.2, 0, 1);
     const stats = this.getDerivedStats();
     const maxFuel = safeNumber(stats.maxFuel, 45);
     const gravity = this.obstacles.getGravityInfluence(this.player, this.save.upgrades.durability);
@@ -685,12 +685,12 @@ export class Game {
       this.input,
       deltaTime,
       {
-        minX: this.obstacles.getRouteStartX() - 80,
-        maxX: this.obstacles.getRouteLength() + 40,
-        minY: -18,
-        maxY: 48,
-        minZ: -68,
-        maxZ: 68
+        minX: this.obstacles.getRouteStartX() - 180,
+        maxX: this.obstacles.getRouteLength() + 120,
+        minY: -90,
+        maxY: 210,
+        minZ: -240,
+        maxZ: 240
       },
       this.save.upgrades,
       environment,
@@ -709,7 +709,7 @@ export class Game {
 
     this.run.fuel = clamp(
       safeNumber(this.run.fuel, maxFuel) -
-        (0.34 + (movement.thrusting ? 0.46 : 0) + gravity.fuelPenalty * 0.6 + ionStorm.fuelPenalty * 0.6) * deltaTime,
+        (0.18 + (movement.thrusting ? 0.24 : 0) + gravity.fuelPenalty * 0.45 + ionStorm.fuelPenalty * 0.45) * deltaTime,
       0,
       maxFuel
     );
@@ -974,7 +974,7 @@ export class Game {
       const direction = this.vectorFromYawPitch(this.look.yaw, this.look.pitch, this.tempVectorB);
       if (this.shipCameraMode === "cockpit") {
         this.player.cameraAnchor.getWorldPosition(this.tempVectorA);
-        const lookAt = direction.multiplyScalar(90).add(this.tempVectorA);
+        const lookAt = direction.multiplyScalar(160).add(this.tempVectorA);
         const cockpitSway = this.THREE.MathUtils.lerp(0, telemetry.velocity.z * 0.004, 0.35);
         this.tempVectorA.y += Math.sin(this.time * 14) * (telemetry.thrusting ? 0.007 : 0.003);
         this.tempVectorA.z += cockpitSway;
@@ -982,19 +982,19 @@ export class Game {
           this.tempVectorA.x += Math.sin(this.time * 44) * 0.08;
           this.tempVectorA.y += Math.cos(this.time * 38) * 0.08;
         }
-        this.camera.position.lerp(this.tempVectorA, clamp(deltaTime * 20, 0, 1));
-        this.cameraTarget.lerp(lookAt, clamp(deltaTime * 18, 0, 1));
+        this.camera.position.lerp(this.tempVectorA, clamp(deltaTime * 18, 0, 1));
+        this.cameraTarget.lerp(lookAt, clamp(deltaTime * 14, 0, 1));
       } else {
         const anchor = this.shipCameraMode === "close" ? this.player.closeChaseAnchor : this.player.farChaseAnchor;
         anchor.getWorldPosition(this.tempVectorA);
         this.player.cameraLookAnchor.getWorldPosition(this.tempVectorB);
         const lookAt = this.tempVectorB.clone();
-        lookAt.x += telemetry.velocity.x * 0.42;
-        lookAt.y += telemetry.velocity.y * 0.16;
-        lookAt.z += telemetry.velocity.z * 0.28;
-        this.tempVectorA.y += this.shipCameraMode === "close" ? 0.3 : 0.8;
-        this.camera.position.lerp(this.tempVectorA, clamp(deltaTime * (this.shipCameraMode === "close" ? 7.5 : 5.5), 0, 1));
-        this.cameraTarget.lerp(lookAt, clamp(deltaTime * 8.5, 0, 1));
+        lookAt.x += telemetry.velocity.x * 0.58;
+        lookAt.y += telemetry.velocity.y * 0.22;
+        lookAt.z += telemetry.velocity.z * 0.36;
+        this.tempVectorA.y += this.shipCameraMode === "close" ? 0.45 : 1.1;
+        this.camera.position.lerp(this.tempVectorA, clamp(deltaTime * (this.shipCameraMode === "close" ? 5.8 : 4.2), 0, 1));
+        this.cameraTarget.lerp(lookAt, clamp(deltaTime * 6.4, 0, 1));
       }
       this.camera.lookAt(this.cameraTarget);
       return;
@@ -1089,7 +1089,7 @@ export class Game {
       const departure = this.obstacles.getDepartureWorld();
       return {
         key: "atmosphere",
-        label: "Atmosphere Exit",
+        label: "Orbital Break",
         position: {
           x: departure.departureLane.spaceBreakX,
           z: 0
@@ -1119,7 +1119,7 @@ export class Game {
     const height = canvas.height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const range = this.state === "launch" ? 320 : this.isShipState() ? 640 : 140;
+    const range = this.state === "launch" ? 1400 : this.isShipState() ? 2600 : 220;
     const points = this.obstacles.getNavigationPoints(this.run.wormholeUsed);
     const trackedPosition = this.isOnFootState() ? this.character.position : this.player.position;
     const trackedYaw = this.isOnFootState() ? this.look.yaw : this.look.yaw;
@@ -1273,7 +1273,7 @@ export class Game {
       targetLabelEl.textContent = target?.label ?? "Mission";
     }
     if (minimapModeEl) {
-      minimapModeEl.textContent = this.state === "launch" ? "Planet Exit" : this.isShipState() ? "Long Route" : "Port Grid";
+      minimapModeEl.textContent = this.state === "launch" ? "Atmosphere Nav" : this.isShipState() ? "System Radar" : "Port Grid";
     }
 
     const gameplayState = this.isGameplayState();
@@ -1421,7 +1421,7 @@ export class Game {
     const handling = safeInteger(upgrades.handling);
     return {
       cruiseSpeed: 96 + engine * 10,
-      maxFuel: Math.max(1, 120 + fuelTank * 24),
+      maxFuel: Math.max(1, 240 + fuelTank * 44),
       handlingFactor: 1 + handling * 0.1,
       dockingAssist: durability * 0.24 + handling * 0.1,
       wormholeAssist: engine * 0.13 + handling * 0.1

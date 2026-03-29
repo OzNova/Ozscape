@@ -13,8 +13,8 @@ export class ObstacleManager {
     this.scene.add(this.root);
 
     this.routeScale = 0.24;
-    this.routeDistanceScale = 2.15;
-    this.depthScale = 0.22;
+    this.routeDistanceScale = 5.6;
+    this.depthScale = 0.34;
 
     this.objects = [];
     this.gravityZones = [];
@@ -75,23 +75,23 @@ export class ObstacleManager {
     const departure = {
       portLabel: segment.departure.portLabel,
       planetLabel: segment.departure.planetLabel,
-      characterSpawn: new this.THREE.Vector3(-44, 1.2, 28),
-      shipSpawn: new this.THREE.Vector3(36, 3.8, -6),
-      cargoZone: { minX: -70, maxX: -28, minZ: 12, maxZ: 42 },
-      boardingZone: { minX: 22, maxX: 48, minZ: -14, maxZ: 6 },
+      characterSpawn: new this.THREE.Vector3(-86, 1.2, 36),
+      shipSpawn: new this.THREE.Vector3(62, 4.6, -10),
+      cargoZone: { minX: -128, maxX: -54, minZ: 18, maxZ: 58 },
+      boardingZone: { minX: 36, maxX: 84, minZ: -22, maxZ: 10 },
       departureLane: {
-        startX: 36,
-        clearX: 320,
-        spaceBreakX: 560,
-        minZ: -22,
-        maxZ: 22,
-        lowerY: 28,
-        upperY: 76,
-        targetY: 132
+        startX: 62,
+        clearX: 760,
+        spaceBreakX: 2100,
+        minZ: -42,
+        maxZ: 42,
+        lowerY: 120,
+        upperY: 280,
+        targetY: 520
       }
     };
 
-    const routeStartX = departure.departureLane.spaceBreakX + 120;
+    const routeStartX = departure.departureLane.spaceBreakX + 420;
     const routeLength = routeStartX + scaleX(segment.length);
     const stationX = routeStartX + scaleX(segment.station.worldX);
     const gateX = routeStartX + scaleX(segment.gate.worldX);
@@ -99,9 +99,9 @@ export class ObstacleManager {
       ? {
           x: routeStartX + scaleX(segment.wormhole.worldX),
           z: this.toRouteZ(segment.wormhole.worldY),
-          radius: segment.wormhole.radius * 0.17,
-          captureDepth: segment.wormhole.captureWidth * 0.12,
-          captureHeight: segment.wormhole.captureHeight * 0.08,
+          radius: segment.wormhole.radius * 0.24,
+          captureDepth: segment.wormhole.captureWidth * 0.18,
+          captureHeight: segment.wormhole.captureHeight * 0.14,
           exitProgress: routeStartX + scaleX(segment.wormhole.exitProgress),
           fuelBonus: segment.wormhole.fuelBonus,
           rewardBonus: segment.wormhole.rewardBonus,
@@ -116,15 +116,15 @@ export class ObstacleManager {
       station: {
         x: stationX,
         z: this.toRouteZ(segment.station.worldY),
-        bodyRadius: segment.station.bodyRadius * 0.18,
-        zoneDepth: segment.station.zoneWidth * 0.12,
-        zoneHeight: segment.station.zoneHeight * 0.1
+        bodyRadius: segment.station.bodyRadius * 0.26,
+        zoneDepth: segment.station.zoneWidth * 0.22,
+        zoneHeight: segment.station.zoneHeight * 0.2
       },
       gate: {
         x: gateX,
         z: this.toRouteZ(segment.gate.worldY),
-        width: segment.gate.width * 0.16,
-        height: segment.gate.height * 0.08
+        width: segment.gate.width * 0.28,
+        height: segment.gate.height * 0.14
       },
       wormhole,
       arrival: {
@@ -139,68 +139,89 @@ export class ObstacleManager {
     const THREE = this.THREE;
 
     const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(360, 96),
-      new THREE.MeshStandardMaterial({ color: 0x0b1324, roughness: 1, metalness: 0.04 })
+      new THREE.CircleGeometry(1500, 140),
+      new THREE.MeshStandardMaterial({ color: 0x0b1222, roughness: 1, metalness: 0.03 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     this.departureGroup.add(ground);
 
+    const star = new THREE.Mesh(
+      new THREE.SphereGeometry(180, 32, 32),
+      new THREE.MeshBasicMaterial({ color: 0xfff1b8, transparent: true, opacity: 0.96 })
+    );
+    star.position.set(-1600, 980, -3600);
+    this.departureGroup.add(star);
+
+    const starGlow = new THREE.Mesh(
+      new THREE.SphereGeometry(320, 28, 28),
+      new THREE.MeshBasicMaterial({ color: 0xfef3c7, transparent: true, opacity: 0.14 })
+    );
+    starGlow.position.copy(star.position);
+    this.departureGroup.add(starGlow);
+
     const planet = new THREE.Mesh(
-      new THREE.SphereGeometry(240, 60, 60),
+      new THREE.SphereGeometry(2600, 84, 84),
       new THREE.MeshStandardMaterial({
-        color: 0x60a5fa,
-        emissive: 0x1d4ed8,
-        emissiveIntensity: 0.95,
+        color: 0x4878b8,
+        emissive: 0x102f63,
+        emissiveIntensity: 0.72,
         roughness: 1
       })
     );
-    planet.position.set(360, 118, -430);
+    planet.position.set(1500, -2180, -3600);
     this.departureGroup.add(planet);
 
     const atmosphere = new THREE.Mesh(
-      new THREE.SphereGeometry(258, 60, 60),
-      new THREE.MeshBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.16 })
+      new THREE.SphereGeometry(2740, 84, 84),
+      new THREE.MeshBasicMaterial({ color: 0x8cc8ff, transparent: true, opacity: 0.18 })
     );
     atmosphere.position.copy(planet.position);
     this.departureGroup.add(atmosphere);
 
     const haze = new THREE.Mesh(
-      new THREE.CircleGeometry(340, 64),
-      new THREE.MeshBasicMaterial({ color: 0x2563eb, transparent: true, opacity: 0.11 })
+      new THREE.CircleGeometry(1320, 88),
+      new THREE.MeshBasicMaterial({ color: 0x2b5fae, transparent: true, opacity: 0.12 })
     );
     haze.rotation.x = -Math.PI / 2;
-    haze.position.set(60, 0.2, 0);
+    haze.position.set(260, 0.25, 0);
     this.departureGroup.add(haze);
 
     const horizon = new THREE.Mesh(
-      new THREE.CylinderGeometry(310, 360, 18, 72, 1, true),
-      new THREE.MeshStandardMaterial({ color: 0x14233d, roughness: 1, metalness: 0.05 })
+      new THREE.CylinderGeometry(1040, 1320, 96, 84, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x13233c, roughness: 1, metalness: 0.04 })
     );
-    horizon.position.set(30, -8, 0);
+    horizon.position.set(260, -46, 0);
     this.departureGroup.add(horizon);
 
+    const terrainRidge = new THREE.Mesh(
+      new THREE.BoxGeometry(1900, 96, 260),
+      new THREE.MeshStandardMaterial({ color: 0x101827, roughness: 1, metalness: 0.02 })
+    );
+    terrainRidge.position.set(320, 8, -180);
+    this.departureGroup.add(terrainRidge);
+
     const pad = new THREE.Mesh(
-      new THREE.BoxGeometry(92, 1.8, 38),
+      new THREE.BoxGeometry(180, 2.2, 72),
       new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.9, metalness: 0.1 })
     );
-    pad.position.set(28, 0.9, -4);
+    pad.position.set(54, 1.1, -8);
     pad.receiveShadow = true;
     this.departureGroup.add(pad);
 
     const runway = new THREE.Mesh(
-      new THREE.BoxGeometry(420, 0.08, 28),
-      new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.14 })
+      new THREE.BoxGeometry(2100, 0.08, 56),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.15 })
     );
-    runway.position.set(210, 0.12, 0);
+    runway.position.set(1000, 0.12, 0);
     this.departureGroup.add(runway);
 
     const ramp = new THREE.Mesh(
-      new THREE.BoxGeometry(12, 0.5, 6),
+      new THREE.BoxGeometry(18, 0.6, 10),
       new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.9 })
     );
     ramp.rotation.z = -0.2;
-    ramp.position.set(24.5, 1.7, -2.2);
+    ramp.position.set(42, 2.1, -3.4);
     ramp.castShadow = true;
     ramp.receiveShadow = true;
     this.departureGroup.add(ramp);
@@ -214,20 +235,20 @@ export class ObstacleManager {
     this.createAtmosphereBands();
 
     const railMaterial = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
-    for (let index = 0; index < 6; index += 1) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(28, 0.22, 0.22), railMaterial);
-      rail.position.set(-44 + index * 28, 0.5, -18);
+    for (let index = 0; index < 10; index += 1) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(64, 0.22, 0.22), railMaterial);
+      rail.position.set(-92 + index * 68, 0.5, -30);
       this.departureGroup.add(rail);
       const oppositeRail = rail.clone();
-      oppositeRail.position.z = 18;
+      oppositeRail.position.z = 30;
       this.departureGroup.add(oppositeRail);
     }
 
     const dome = new THREE.Mesh(
-      new THREE.SphereGeometry(20, 24, 24, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.SphereGeometry(42, 28, 28, 0, Math.PI * 2, 0, Math.PI / 2),
       new THREE.MeshStandardMaterial({ color: 0x1e293b, emissive: 0x082f49, emissiveIntensity: 0.2, transparent: true, opacity: 0.94 })
     );
-    dome.position.set(-110, 0, 28);
+    dome.position.set(-220, 0, 42);
     this.departureGroup.add(dome);
   }
 
@@ -237,11 +258,12 @@ export class ObstacleManager {
     const glowMaterial = new THREE.MeshStandardMaterial({ color: 0x67e8f9, emissive: 0x22d3ee, emissiveIntensity: 0.6 });
 
     [
-      [-116, 14, -34, 28, 28, 28],
-      [-68, 10, -8, 22, 20, 16],
-      [88, 18, 24, 30, 34, 22],
-      [148, 9, -30, 22, 18, 16],
-      [198, 12, 20, 26, 24, 18]
+      [-260, 24, -58, 64, 48, 46],
+      [-150, 18, -14, 42, 36, 28],
+      [120, 30, 38, 70, 60, 40],
+      [280, 16, -42, 48, 32, 30],
+      [430, 20, 24, 58, 40, 32],
+      [620, 26, -18, 72, 52, 38]
     ].forEach(([x, y, z, w, h, d]) => {
       const building = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), structureMaterial);
       building.position.set(x, h / 2, z);
@@ -250,24 +272,24 @@ export class ObstacleManager {
       this.departureGroup.add(building);
     });
 
-    for (let index = 0; index < 9; index += 1) {
+    for (let index = 0; index < 15; index += 1) {
       const crate = new THREE.Mesh(
-        new THREE.BoxGeometry(4.4, 4.4, 4.4),
+        new THREE.BoxGeometry(6.8, 6.8, 6.8),
         new THREE.MeshStandardMaterial({ color: index % 2 === 0 ? 0x334155 : 0x475569, roughness: 0.9 })
       );
-      crate.position.set(-58 + (index % 3) * 6.2, 2.3, 16 + Math.floor(index / 3) * 6.2);
+      crate.position.set(-116 + (index % 5) * 10.5, 3.5, 22 + Math.floor(index / 5) * 10.5);
       crate.castShadow = true;
       crate.receiveShadow = true;
       this.departureGroup.add(crate);
     }
 
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.6, 28, 10), structureMaterial);
-    tower.position.set(52, 14, -28);
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(3.8, 5.2, 74, 12), structureMaterial);
+    tower.position.set(104, 37, -42);
     tower.castShadow = true;
     this.departureGroup.add(tower);
 
-    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 12), glowMaterial);
-    beacon.position.set(52, 28.5, -28);
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(1.4, 12, 12), glowMaterial);
+    beacon.position.set(104, 74, -42);
     this.departureGroup.add(beacon);
   }
 
@@ -275,13 +297,14 @@ export class ObstacleManager {
     const THREE = this.THREE;
     const lineMaterial = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.18 });
     const routeGuides = [
-      { x: -46, z: 26, width: 34, depth: 3.6, color: 0xfbbf24 },
-      { x: -12, z: 18, width: 28, depth: 2.8, color: 0xfbbf24 },
-      { x: 24, z: 6, width: 24, depth: 2.4, color: 0x67e8f9 },
-      { x: 56, z: 2, width: 22, depth: 2, color: 0x67e8f9 },
-      { x: 120, z: 0, width: 60, depth: 1.6, color: 0x38bdf8 },
-      { x: 220, z: 0, width: 74, depth: 1.6, color: 0x38bdf8 },
-      { x: 340, z: 0, width: 88, depth: 1.6, color: 0x38bdf8 }
+      { x: -98, z: 36, width: 58, depth: 6.8, color: 0xfbbf24 },
+      { x: -28, z: 24, width: 54, depth: 5.6, color: 0xfbbf24 },
+      { x: 46, z: 10, width: 42, depth: 4.4, color: 0x67e8f9 },
+      { x: 122, z: 4, width: 40, depth: 4, color: 0x67e8f9 },
+      { x: 320, z: 0, width: 170, depth: 2.6, color: 0x38bdf8 },
+      { x: 760, z: 0, width: 240, depth: 2.4, color: 0x38bdf8 },
+      { x: 1340, z: 0, width: 320, depth: 2.4, color: 0x38bdf8 },
+      { x: 1840, z: 0, width: 280, depth: 2.2, color: 0x38bdf8 }
     ];
 
     routeGuides.forEach((guide) => {
@@ -293,12 +316,12 @@ export class ObstacleManager {
       this.departureGroup.add(strip);
     });
 
-    for (let index = 0; index < 7; index += 1) {
+    for (let index = 0; index < 12; index += 1) {
       const guideLight = new THREE.Mesh(
         new THREE.CylinderGeometry(0.18, 0.18, 0.18, 10),
         lineMaterial
       );
-      guideLight.position.set(-58 + index * 34, 0.22, 24 - index * 4);
+      guideLight.position.set(-120 + index * 170, 0.22, 32 - Math.min(index, 6) * 4);
       this.departureGroup.add(guideLight);
     }
   }
@@ -306,9 +329,10 @@ export class ObstacleManager {
   createAtmosphereBands() {
     const THREE = this.THREE;
     const bandSpecs = [
-      { x: 120, y: 18, z: 0, w: 180, h: 10, d: 72, opacity: 0.12, color: 0xbfe2ff },
-      { x: 240, y: 54, z: 0, w: 220, h: 14, d: 92, opacity: 0.09, color: 0xdbeafe },
-      { x: 390, y: 96, z: 0, w: 240, h: 16, d: 108, opacity: 0.06, color: 0xe0f2fe }
+      { x: 240, y: 24, z: 0, w: 320, h: 18, d: 120, opacity: 0.14, color: 0xbfe2ff },
+      { x: 620, y: 92, z: 0, w: 520, h: 26, d: 180, opacity: 0.12, color: 0xdbeafe },
+      { x: 1080, y: 196, z: 0, w: 720, h: 34, d: 240, opacity: 0.09, color: 0xe0f2fe },
+      { x: 1640, y: 324, z: 0, w: 920, h: 40, d: 320, opacity: 0.06, color: 0xe8f4ff }
     ];
 
     bandSpecs.forEach((band) => {
@@ -325,17 +349,20 @@ export class ObstacleManager {
     const THREE = this.THREE;
     const glowMaterial = new THREE.MeshBasicMaterial({ color: 0x67e8f9 });
     const positions = [
-      [-24, 0.3, -14],
-      [0, 0.3, -14],
-      [24, 0.3, -14],
-      [-24, 0.3, 14],
-      [0, 0.3, 14],
-      [24, 0.3, 14],
-      [72, 0.3, 0],
-      [118, 0.3, 0],
-      [164, 0.3, 0],
+      [-40, 0.3, -22],
+      [0, 0.3, -22],
+      [40, 0.3, -22],
+      [-40, 0.3, 22],
+      [0, 0.3, 22],
+      [40, 0.3, 22],
+      [120, 0.3, 0],
       [220, 0.3, 0],
-      [286, 0.3, 0]
+      [360, 0.3, 0],
+      [520, 0.3, 0],
+      [760, 0.3, 0],
+      [1040, 0.3, 0],
+      [1380, 0.3, 0],
+      [1760, 0.3, 0]
     ];
 
     positions.forEach(([x, y, z]) => {
@@ -350,11 +377,11 @@ export class ObstacleManager {
 
     const starGeometryNear = new THREE.BufferGeometry();
     const starPositionsNear = [];
-    for (let index = 0; index < 1600; index += 1) {
+    for (let index = 0; index < 2800; index += 1) {
       starPositionsNear.push(
-        Math.random() * (this.segmentWorld.routeLength + 600),
-        (Math.random() - 0.5) * 260,
-        (Math.random() - 0.5) * 240
+        Math.random() * (this.segmentWorld.routeLength + 2800),
+        (Math.random() - 0.5) * 620,
+        (Math.random() - 0.5) * 560
       );
     }
     starGeometryNear.setAttribute("position", new THREE.Float32BufferAttribute(starPositionsNear, 3));
@@ -367,37 +394,68 @@ export class ObstacleManager {
 
     const starGeometryFar = new THREE.BufferGeometry();
     const starPositionsFar = [];
-    for (let index = 0; index < 1900; index += 1) {
+    for (let index = 0; index < 5200; index += 1) {
       starPositionsFar.push(
-        Math.random() * (this.segmentWorld.routeLength + 900),
-        (Math.random() - 0.5) * 640,
-        (Math.random() - 0.5) * 620
+        Math.random() * (this.segmentWorld.routeLength + 4200),
+        (Math.random() - 0.5) * 1800,
+        (Math.random() - 0.5) * 1800
       );
     }
     starGeometryFar.setAttribute("position", new THREE.Float32BufferAttribute(starPositionsFar, 3));
     this.flightGroup.add(
       new THREE.Points(
         starGeometryFar,
-        new THREE.PointsMaterial({ color: 0x93c5fd, size: 0.86, sizeAttenuation: true, transparent: true, opacity: 0.84 })
+        new THREE.PointsMaterial({ color: 0x93c5fd, size: 0.78, sizeAttenuation: true, transparent: true, opacity: 0.82 })
       )
     );
 
+    const starGeometryUltra = new THREE.BufferGeometry();
+    const starPositionsUltra = [];
+    for (let index = 0; index < 7600; index += 1) {
+      starPositionsUltra.push(
+        Math.random() * (this.segmentWorld.routeLength + 5200),
+        (Math.random() - 0.5) * 4600,
+        (Math.random() - 0.5) * 4600
+      );
+    }
+    starGeometryUltra.setAttribute("position", new THREE.Float32BufferAttribute(starPositionsUltra, 3));
+    this.flightGroup.add(
+      new THREE.Points(
+        starGeometryUltra,
+        new THREE.PointsMaterial({ color: 0xdbeafe, size: 0.62, sizeAttenuation: true, transparent: true, opacity: 0.55 })
+      )
+    );
+
+    const localStar = new THREE.Mesh(
+      new THREE.SphereGeometry(150, 28, 28),
+      new THREE.MeshBasicMaterial({ color: 0xfff2b5, transparent: true, opacity: 0.98 })
+    );
+    localStar.position.set(this.segmentWorld.routeLength * 0.92, 860, -3000);
+    this.flightGroup.add(localStar);
+
+    const localStarGlow = new THREE.Mesh(
+      new THREE.SphereGeometry(280, 24, 24),
+      new THREE.MeshBasicMaterial({ color: 0xfef3c7, transparent: true, opacity: 0.12 })
+    );
+    localStarGlow.position.copy(localStar.position);
+    this.flightGroup.add(localStarGlow);
+
     const nebula = new THREE.Mesh(
-      new THREE.SphereGeometry(140, 32, 32),
+      new THREE.SphereGeometry(260, 32, 32),
       new THREE.MeshBasicMaterial({ color: 0x1d4ed8, transparent: true, opacity: 0.06 })
     );
-    nebula.position.set(this.segmentWorld.routeLength * 0.38, 90, -120);
+    nebula.position.set(this.segmentWorld.routeLength * 0.34, 220, -620);
     this.flightGroup.add(nebula);
 
     const nebula2 = new THREE.Mesh(
-      new THREE.SphereGeometry(110, 28, 28),
+      new THREE.SphereGeometry(220, 28, 28),
       new THREE.MeshBasicMaterial({ color: 0x7c3aed, transparent: true, opacity: 0.05 })
     );
-    nebula2.position.set(this.segmentWorld.routeLength * 0.72, -60, 130);
+    nebula2.position.set(this.segmentWorld.routeLength * 0.76, -180, 760);
     this.flightGroup.add(nebula2);
 
     this.segment.planets.forEach((planet, index) => {
-      const radius = Math.max(16, planet.radius * 0.12);
+      const radius = Math.max(42, planet.radius * 0.28);
       const sphere = new THREE.Mesh(
         new THREE.SphereGeometry(radius, 36, 36),
         new THREE.MeshStandardMaterial({
@@ -409,17 +467,29 @@ export class ObstacleManager {
       );
       sphere.position.set(
         this.segmentWorld.routeStartX + planet.worldX * this.routeScale * this.routeDistanceScale,
-        72 + radius * 0.28 + index * 10,
-        this.toRouteZ(planet.worldY) * 1.72
+        180 + radius * 0.24 + index * 40,
+        this.toRouteZ(planet.worldY) * 2.9
       );
       this.flightGroup.add(sphere);
 
       const glow = new THREE.Mesh(
-        new THREE.SphereGeometry(radius * 1.08, 32, 32),
-        new THREE.MeshBasicMaterial({ color: hexFromCss(planet.midColor), transparent: true, opacity: 0.08 })
+        new THREE.SphereGeometry(radius * 1.12, 32, 32),
+        new THREE.MeshBasicMaterial({ color: hexFromCss(planet.midColor), transparent: true, opacity: 0.1 })
       );
       glow.position.copy(sphere.position);
       this.flightGroup.add(glow);
+
+      if (index % 2 === 0) {
+        const moon = new THREE.Mesh(
+          new THREE.SphereGeometry(radius * 0.22, 20, 20),
+          new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.95, metalness: 0.05 })
+        );
+        moon.position.copy(sphere.position);
+        moon.position.x += radius * 2.6;
+        moon.position.y += radius * 0.35;
+        moon.position.z -= radius * 1.8;
+        this.flightGroup.add(moon);
+      }
       this.planets.push({ mesh: sphere, glow });
     });
 
@@ -432,12 +502,21 @@ export class ObstacleManager {
             this.routeScale *
             this.routeDistanceScale;
         const z = this.toRouteZ(field.top + (field.bottom - field.top) * this.normalizedNoise(index + field.endX, 0.65));
-        const radius = 1.9 + this.normalizedNoise(index + field.endX, 0.82) * 2.6;
+        const radius = 1.15 + this.normalizedNoise(index + field.endX, 0.82) * 1.75;
+        const shape = index % 3 === 0
+          ? new THREE.IcosahedronGeometry(radius, 0)
+          : index % 3 === 1
+            ? new THREE.DodecahedronGeometry(radius, 0)
+            : new THREE.OctahedronGeometry(radius, 0);
         const mesh = new THREE.Mesh(
-          new THREE.IcosahedronGeometry(radius, 0),
-          new THREE.MeshStandardMaterial({ color: 0x9aa8bc, roughness: 0.98, metalness: 0.06 })
+          shape,
+          new THREE.MeshStandardMaterial({
+            color: index % 2 === 0 ? 0x94a3b8 : 0xb8c2cf,
+            roughness: 0.98,
+            metalness: 0.05
+          })
         );
-        mesh.position.set(x, (this.normalizedNoise(index + 91, 0.19) - 0.5) * 12, z);
+        mesh.position.set(x, (this.normalizedNoise(index + 91, 0.19) - 0.5) * 26, z);
         mesh.rotation.set(index * 0.2, index * 0.1, index * 0.3);
         this.flightGroup.add(mesh);
         this.objects.push({ kind: "debris", mesh, radius, z, spin: 0.25 + index * 0.003 });
@@ -445,14 +524,14 @@ export class ObstacleManager {
     });
 
     this.segment.movingAsteroids.forEach((asteroid) => {
-      const radius = asteroid.radius * 0.135;
+      const radius = asteroid.radius * 0.105;
       const mesh = new THREE.Mesh(
         new THREE.DodecahedronGeometry(radius, 0),
-        new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.95, metalness: 0.06 })
+        new THREE.MeshStandardMaterial({ color: 0xd5dee8, roughness: 0.95, metalness: 0.06 })
       );
       const x = this.segmentWorld.routeStartX + asteroid.worldX * this.routeScale * this.routeDistanceScale;
       const z = this.toRouteZ(asteroid.worldY);
-      mesh.position.set(x, (this.normalizedNoise(asteroid.worldX, 0.4) - 0.5) * 8, z);
+      mesh.position.set(x, (this.normalizedNoise(asteroid.worldX, 0.4) - 0.5) * 20, z);
       this.flightGroup.add(mesh);
       this.objects.push({
         kind: "asteroid",
@@ -580,29 +659,46 @@ export class ObstacleManager {
     const THREE = this.THREE;
     const group = new THREE.Group();
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(this.segmentWorld.station.bodyRadius, 2.2, 14, 42),
+      new THREE.TorusGeometry(this.segmentWorld.station.bodyRadius, 3.8, 16, 56),
       new THREE.MeshStandardMaterial({ color: 0x7dd3fc, emissive: 0x0f766e, emissiveIntensity: 0.36 })
     );
     ring.rotation.x = 0.4;
 
     const hub = new THREE.Mesh(
-      new THREE.SphereGeometry(this.segmentWorld.station.bodyRadius * 0.46, 22, 22),
+      new THREE.SphereGeometry(this.segmentWorld.station.bodyRadius * 0.5, 26, 26),
       new THREE.MeshStandardMaterial({ color: 0x111827, emissive: 0x0ea5e9, emissiveIntensity: 0.28 })
     );
 
     const dock = new THREE.Mesh(
-      new THREE.BoxGeometry(12, 1.4, 10),
+      new THREE.BoxGeometry(24, 2.2, 14),
       new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.8 })
     );
-    dock.position.set(this.segmentWorld.station.zoneDepth / 2 - 4, 0, 0);
+    dock.position.set(this.segmentWorld.station.zoneDepth / 2 - 8, 0, 0);
 
-    const armGeometry = new THREE.BoxGeometry(1.2, 12, 1.2);
+    const armGeometry = new THREE.BoxGeometry(1.8, 20, 1.8);
     const armLeft = new THREE.Mesh(armGeometry, new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.84 }));
     armLeft.position.set(-this.segmentWorld.station.bodyRadius * 0.9, 0, -this.segmentWorld.station.bodyRadius * 0.8);
     const armRight = armLeft.clone();
     armRight.position.z = this.segmentWorld.station.bodyRadius * 0.8;
 
-    group.add(ring, hub, dock, armLeft, armRight);
+    const trussMaterial = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.88 });
+    const trussTop = new THREE.Mesh(
+      new THREE.BoxGeometry(this.segmentWorld.station.bodyRadius * 1.7, 1.1, 1.1),
+      trussMaterial
+    );
+    trussTop.position.set(-4, this.segmentWorld.station.bodyRadius * 0.46, 0);
+
+    const trussBottom = trussTop.clone();
+    trussBottom.position.y = -this.segmentWorld.station.bodyRadius * 0.42;
+
+    const spine = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.2, 2.2, this.segmentWorld.station.bodyRadius * 1.8, 12),
+      trussMaterial
+    );
+    spine.rotation.z = Math.PI / 2;
+    spine.position.x = -4;
+
+    group.add(ring, hub, dock, armLeft, armRight, trussTop, trussBottom, spine);
     group.position.set(this.segmentWorld.station.x, 0, this.segmentWorld.station.z);
 
     return { ...this.segmentWorld.station, mesh: group };
@@ -616,14 +712,29 @@ export class ObstacleManager {
       emissive: 0x2563eb,
       emissiveIntensity: 0.45
     });
-    const pillarGeometry = new THREE.BoxGeometry(3.2, this.segmentWorld.gate.height, 3.2);
+    const pillarGeometry = new THREE.BoxGeometry(5.2, this.segmentWorld.gate.height, 5.2);
     const left = new THREE.Mesh(pillarGeometry, material);
     const right = new THREE.Mesh(pillarGeometry, material);
-    const top = new THREE.Mesh(new THREE.BoxGeometry(this.segmentWorld.gate.width, 3.4, 3.4), material);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(this.segmentWorld.gate.width, 5.6, 5.6), material);
     left.position.x = -this.segmentWorld.gate.width / 2;
     right.position.x = this.segmentWorld.gate.width / 2;
     top.position.y = this.segmentWorld.gate.height / 2;
-    group.add(left, right, top);
+
+    const braceGeometry = new THREE.BoxGeometry(this.segmentWorld.gate.width * 0.72, 1.4, 1.4);
+    const braceA = new THREE.Mesh(braceGeometry, new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.7 }));
+    braceA.rotation.z = 0.48;
+    braceA.position.y = this.segmentWorld.gate.height * 0.18;
+    const braceB = braceA.clone();
+    braceB.rotation.z = -0.48;
+
+    const halo = new THREE.Mesh(
+      new THREE.TorusGeometry(this.segmentWorld.gate.width * 0.42, 1.2, 14, 48),
+      new THREE.MeshBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.22 })
+    );
+    halo.rotation.x = Math.PI / 2;
+    halo.position.y = this.segmentWorld.gate.height * 0.2;
+
+    group.add(left, right, top, braceA, braceB, halo);
     group.position.set(this.segmentWorld.gate.x, this.segmentWorld.gate.height / 2, this.segmentWorld.gate.z);
     return { ...this.segmentWorld.gate, mesh: group };
   }
@@ -633,29 +744,35 @@ export class ObstacleManager {
     const group = new THREE.Group();
 
     const outer = new THREE.Mesh(
-      new THREE.TorusGeometry(this.segmentWorld.wormhole.radius, 2.6, 24, 64),
+      new THREE.TorusGeometry(this.segmentWorld.wormhole.radius, 4.2, 24, 76),
       new THREE.MeshStandardMaterial({ color: 0xf472b6, emissive: 0x7e22ce, emissiveIntensity: 1 })
     );
     const inner = new THREE.Mesh(
-      new THREE.TorusGeometry(this.segmentWorld.wormhole.radius * 0.66, 1.1, 16, 48),
+      new THREE.TorusGeometry(this.segmentWorld.wormhole.radius * 0.68, 1.8, 16, 56),
       new THREE.MeshStandardMaterial({ color: 0xa855f7, emissive: 0x9333ea, emissiveIntensity: 1.2 })
     );
     inner.rotation.x = Math.PI / 2;
 
     const core = new THREE.Mesh(
-      new THREE.CylinderGeometry(this.segmentWorld.wormhole.radius * 0.68, this.segmentWorld.wormhole.radius * 0.68, 1.6, 36),
-      new THREE.MeshBasicMaterial({ color: 0xd8b4fe, transparent: true, opacity: 0.3 })
+      new THREE.CylinderGeometry(this.segmentWorld.wormhole.radius * 0.7, this.segmentWorld.wormhole.radius * 0.7, 3.2, 40),
+      new THREE.MeshBasicMaterial({ color: 0xd8b4fe, transparent: true, opacity: 0.24 })
     );
     core.rotation.z = Math.PI / 2;
 
     const halo = new THREE.Mesh(
-      new THREE.TorusGeometry(this.segmentWorld.wormhole.radius * 1.18, 1.2, 12, 42),
+      new THREE.TorusGeometry(this.segmentWorld.wormhole.radius * 1.24, 1.8, 12, 52),
       new THREE.MeshBasicMaterial({ color: 0xe879f9, transparent: true, opacity: 0.22 })
     );
     halo.rotation.y = Math.PI / 2;
 
-    group.add(outer, inner, core, halo);
-    group.position.set(this.segmentWorld.wormhole.x, 6, this.segmentWorld.wormhole.z);
+    const shell = new THREE.Mesh(
+      new THREE.TorusGeometry(this.segmentWorld.wormhole.radius * 1.52, 1.6, 10, 44),
+      new THREE.MeshBasicMaterial({ color: 0xf5d0fe, transparent: true, opacity: 0.1 })
+    );
+    shell.rotation.x = Math.PI / 2;
+
+    group.add(outer, inner, core, halo, shell);
+    group.position.set(this.segmentWorld.wormhole.x, 12, this.segmentWorld.wormhole.z);
 
     return { ...this.segmentWorld.wormhole, mesh: group };
   }
@@ -664,12 +781,12 @@ export class ObstacleManager {
     const THREE = this.THREE;
     const group = new THREE.Group();
     const beam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.34, 0.7, height, 12),
+      new THREE.CylinderGeometry(0.55, 1.1, height, 12),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3 })
     );
     beam.position.y = height / 2;
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(2.4, 0.22, 8, 24),
+      new THREE.TorusGeometry(3.6, 0.34, 8, 32),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 })
     );
     ring.rotation.x = Math.PI / 2;
@@ -707,18 +824,18 @@ export class ObstacleManager {
   createLabelSprite(text, color) {
     const THREE = this.THREE;
     const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 72;
+    canvas.width = 320;
+    canvas.height = 88;
     const context = canvas.getContext("2d");
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.fillStyle = "#e2e8f0";
-    context.font = "bold 28px Trebuchet MS";
+    context.font = "bold 32px Trebuchet MS";
     context.textAlign = "center";
     context.fillText(text, canvas.width / 2, 46);
     const texture = new THREE.CanvasTexture(canvas);
     const material = new THREE.SpriteMaterial({ map: texture, color });
     const sprite = new THREE.Sprite(material);
-    sprite.scale.set(14, 4, 1);
+    sprite.scale.set(18, 5.2, 1);
     return sprite;
   }
 
@@ -786,44 +903,44 @@ export class ObstacleManager {
   getDepartureForce(ship, progress = 0) {
     const lane = this.segmentWorld.departure.departureLane;
     let phase = "surface";
-    let targetY = lane.lowerY * 0.6;
-    let stabilizeY = 0.48;
-    let upward = 12;
-    let forwardAssist = 18;
-    let dragPenalty = 0.1;
+    let targetY = 32;
+    let stabilizeY = 0.62;
+    let upward = 18;
+    let forwardAssist = 14;
+    let dragPenalty = 0.16;
 
-    if (ship.position.y >= lane.upperY) {
-      phase = "spaceBreak";
+    if (ship.position.y >= lane.targetY * 0.82) {
+      phase = "orbitalBreak";
       targetY = lane.targetY;
-      stabilizeY = 0.08;
-      upward = 3.2;
-      forwardAssist = 17;
-      dragPenalty = 0.02;
+      stabilizeY = 0.12;
+      upward = 5.2;
+      forwardAssist = 34;
+      dragPenalty = 0.015;
     } else if (ship.position.y >= lane.lowerY) {
       phase = "upperAtmosphere";
-      targetY = lane.upperY + 18;
-      stabilizeY = 0.16;
-      upward = 6;
-      forwardAssist = 18.5;
-      dragPenalty = 0.045;
-    } else if (ship.position.y >= 12) {
+      targetY = lane.targetY * 0.72;
+      stabilizeY = 0.22;
+      upward = 9.2;
+      forwardAssist = 28;
+      dragPenalty = 0.05;
+    } else if (ship.position.y >= lane.lowerY * 0.32) {
       phase = "lowerAtmosphere";
-      targetY = lane.lowerY + 10;
-      stabilizeY = 0.28;
-      upward = 8.6;
-      forwardAssist = 16.5;
-      dragPenalty = 0.07;
+      targetY = lane.upperY * 0.72;
+      stabilizeY = 0.34;
+      upward = 12.5;
+      forwardAssist = 22;
+      dragPenalty = 0.09;
     }
 
     return {
       phase,
       force: {
-        x: 20 * (1 - progress * 0.2),
-        y: upward * (1 - progress * 0.28),
-        z: -ship.position.z * 0.46
+        x: 28 * (1 - progress * 0.14),
+        y: upward * (1 - progress * 0.18),
+        z: -ship.position.z * 0.52
       },
       forwardAssist,
-      stabilizeZ: 0.55,
+      stabilizeZ: 0.7,
       stabilizeY,
       targetY,
       dragPenalty

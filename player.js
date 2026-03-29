@@ -276,13 +276,13 @@ export class ShipPlayer {
     this.width = 10;
     this.depth = 7.2;
     this.height = 4.2;
-    this.baseAcceleration = 24;
-    this.baseLateralAcceleration = 10;
-    this.baseVerticalAcceleration = 18;
-    this.baseMaxForwardSpeed = 82;
-    this.baseMaxLateralSpeed = 15;
-    this.baseMaxVerticalSpeed = 18;
-    this.baseLift = 14;
+    this.baseAcceleration = 18;
+    this.baseLateralAcceleration = 8.5;
+    this.baseVerticalAcceleration = 24;
+    this.baseMaxForwardSpeed = 118;
+    this.baseMaxLateralSpeed = 18;
+    this.baseMaxVerticalSpeed = 24;
+    this.baseLift = 18;
     this.collisionRadius = 4.2;
     this.group = this.createModel();
     this.reset({ x, y: 3.8, z }, { engine: 0, handling: 0, durability: 0 });
@@ -323,13 +323,17 @@ export class ShipPlayer {
     lowerHull.position.set(-0.4, -0.5, 0);
     lowerHull.castShadow = true;
 
-    const cargoBody = new THREE.Mesh(new THREE.BoxGeometry(6.4, 2.7, 3.4), plateMaterial);
-    cargoBody.position.set(-3.5, 0.2, 0);
+    const cargoBody = new THREE.Mesh(new THREE.BoxGeometry(7.2, 2.9, 3.8), plateMaterial);
+    cargoBody.position.set(-3.9, 0.18, 0);
     cargoBody.castShadow = true;
 
     const dorsalFin = new THREE.Mesh(new THREE.BoxGeometry(2.1, 2.4, 0.32), plateMaterial);
     dorsalFin.position.set(-1.1, 1.55, 0);
     dorsalFin.castShadow = true;
+
+    const ventralFin = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.3, 1.5), plateMaterial);
+    ventralFin.position.set(-3.6, -1.28, 0);
+    ventralFin.castShadow = true;
 
     const sideFinGeometry = new THREE.BoxGeometry(4.8, 0.28, 2.2);
     const sideFinLeft = new THREE.Mesh(sideFinGeometry, plateMaterial);
@@ -345,6 +349,14 @@ export class ShipPlayer {
     enginePodLeft.castShadow = true;
     const enginePodRight = enginePodLeft.clone();
     enginePodRight.position.z = 1.35;
+
+    const cargoRibGeometry = new THREE.BoxGeometry(0.18, 2.6, 3.9);
+    const cargoRibA = new THREE.Mesh(cargoRibGeometry, hullMaterial);
+    cargoRibA.position.set(-1.8, 0.18, 0);
+    const cargoRibB = cargoRibA.clone();
+    cargoRibB.position.x = -4.3;
+    const cargoRibC = cargoRibA.clone();
+    cargoRibC.position.x = -6.5;
 
     const cockpitBase = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.25, 1.8), trimMaterial);
     cockpitBase.position.set(2.45, 1.05, 0);
@@ -383,13 +395,13 @@ export class ShipPlayer {
     this.thrusterGlow.position.set(-10.2, 0.1, 0);
 
     this.cameraAnchor = new THREE.Object3D();
-    this.cameraAnchor.position.set(4.15, 1.86, 0);
+    this.cameraAnchor.position.set(4.85, 2.08, 0);
     this.cameraLookAnchor = new THREE.Object3D();
-    this.cameraLookAnchor.position.set(16.5, 1.9, 0);
+    this.cameraLookAnchor.position.set(24, 2.15, 0);
     this.closeChaseAnchor = new THREE.Object3D();
-    this.closeChaseAnchor.position.set(-16.5, 7.2, 0);
+    this.closeChaseAnchor.position.set(-24, 9.4, 0);
     this.farChaseAnchor = new THREE.Object3D();
-    this.farChaseAnchor.position.set(-30, 12.4, 0);
+    this.farChaseAnchor.position.set(-44, 16.5, 0);
     this.firstPersonHidden = [cockpitBase, canopyFrameRear, canopyFrameTop, canopyFrameLeft, canopyFrameRight, dashboard, dashboardLight, sideConsoleLeft, sideConsoleRight];
     this.firstPersonVisibleOnly = [canopyFrameFront];
     this.firstPersonMode = false;
@@ -411,10 +423,14 @@ export class ShipPlayer {
       lowerHull,
       cargoBody,
       dorsalFin,
+      ventralFin,
       sideFinLeft,
       sideFinRight,
       enginePodLeft,
       enginePodRight,
+      cargoRibA,
+      cargoRibB,
+      cargoRibC,
       cockpitBase,
       canopyFrameFront,
       canopyFrameRear,
@@ -472,16 +488,16 @@ export class ShipPlayer {
     const verticalInput = (input.space ? 1 : 0) - ((input.shift || input.ctrl) ? 1 : 0);
     const thrusting = throttle !== 0 || strafe !== 0 || verticalInput !== 0;
 
-    this.orientation = lerpAngle(this.orientation, targetYaw, clamp(deltaTime * (1.8 + safeStats.handling * 0.1), 0, 1));
-    this.pitch += (targetPitch - this.pitch) * clamp(deltaTime * 1.9, 0, 1);
+    this.orientation = lerpAngle(this.orientation, targetYaw, clamp(deltaTime * (1.35 + safeStats.handling * 0.08), 0, 1));
+    this.pitch += (targetPitch - this.pitch) * clamp(deltaTime * 1.55, 0, 1);
 
-    const forwardAcceleration = this.baseAcceleration + safeStats.engine * 3.1;
-    const lateralAcceleration = this.baseLateralAcceleration + safeStats.handling * 1.6;
-    const verticalAcceleration = this.baseVerticalAcceleration + safeStats.engine * 1.8 + safeStats.handling * 0.8;
-    const maxForwardSpeed = this.baseMaxForwardSpeed + safeStats.engine * 3.3;
-    const maxLateralSpeed = this.baseMaxLateralSpeed + safeStats.handling * 1.6;
-    const maxVerticalSpeed = this.baseMaxVerticalSpeed + safeStats.engine * 1.2;
-    const verticalLift = this.baseLift + safeStats.engine * 1.6;
+    const forwardAcceleration = this.baseAcceleration + safeStats.engine * 2.8;
+    const lateralAcceleration = this.baseLateralAcceleration + safeStats.handling * 1.25;
+    const verticalAcceleration = this.baseVerticalAcceleration + safeStats.engine * 1.5 + safeStats.handling * 0.9;
+    const maxForwardSpeed = this.baseMaxForwardSpeed + safeStats.engine * 4.6;
+    const maxLateralSpeed = this.baseMaxLateralSpeed + safeStats.handling * 1.4;
+    const maxVerticalSpeed = this.baseMaxVerticalSpeed + safeStats.engine * 1.3;
+    const verticalLift = this.baseLift + safeStats.engine * 1.8;
 
     const forwardX = Math.cos(this.orientation);
     const forwardZ = Math.sin(this.orientation);
@@ -515,9 +531,9 @@ export class ShipPlayer {
       this.velocity.y += (environment.targetY - this.position.y) * environment.stabilizeY * deltaTime;
     }
 
-    this.velocity.x *= Math.exp(-0.86 * deltaTime);
-    this.velocity.z *= Math.exp(-(2.2 - safeStats.handling * 0.05) * deltaTime);
-    this.velocity.y *= Math.exp(-(2.05 - safeStats.durability * 0.04) * deltaTime);
+    this.velocity.x *= Math.exp(-0.52 * deltaTime);
+    this.velocity.z *= Math.exp(-(1.55 - safeStats.handling * 0.04) * deltaTime);
+    this.velocity.y *= Math.exp(-(1.72 - safeStats.durability * 0.04) * deltaTime);
 
     const planarSpeed = Math.hypot(this.velocity.x, this.velocity.z);
     if (planarSpeed > maxForwardSpeed) {
@@ -538,15 +554,15 @@ export class ShipPlayer {
     this.position.y = clamp(this.position.y + this.velocity.y * deltaTime, bounds.minY, bounds.maxY);
     this.position.z = clamp(this.position.z + this.velocity.z * deltaTime, bounds.minZ, bounds.maxZ);
 
-    this.renderOrientation = lerpAngle(this.renderOrientation, this.orientation, clamp(deltaTime * 4.4, 0, 1));
-    this.renderPitch += (this.pitch - this.renderPitch) * clamp(deltaTime * 4.1, 0, 1);
+    this.renderOrientation = lerpAngle(this.renderOrientation, this.orientation, clamp(deltaTime * 3.8, 0, 1));
+    this.renderPitch += (this.pitch - this.renderPitch) * clamp(deltaTime * 3.4, 0, 1);
     this.lastThrusting = thrusting;
     this.syncSceneObject();
 
     return {
       thrusting,
       speed: Math.hypot(this.velocity.x, this.velocity.z),
-      stable: Math.hypot(this.velocity.x, this.velocity.z, this.velocity.y) < 16 + safeStats.durability * 1.6,
+      stable: Math.hypot(this.velocity.x, this.velocity.z, this.velocity.y) < 22 + safeStats.durability * 1.9,
       driftRatio: clamp(Math.abs(lateralAlongRight) / Math.max(maxLateralSpeed, 1), 0, 1)
     };
   }
@@ -554,8 +570,8 @@ export class ShipPlayer {
   syncSceneObject() {
     this.group.position.set(this.position.x, this.position.y, this.position.z);
     this.group.rotation.y = -this.renderOrientation;
-    this.group.rotation.z = clamp(-this.velocity.z * 0.02, -0.22, 0.22);
-    this.group.rotation.x = clamp(-this.renderPitch * 0.5 + this.velocity.y * 0.02, -0.28, 0.28);
+    this.group.rotation.z = clamp(-this.velocity.z * 0.014, -0.18, 0.18);
+    this.group.rotation.x = clamp(-this.renderPitch * 0.44 + this.velocity.y * 0.015, -0.24, 0.24);
     const flameScale = this.lastThrusting ? 1.32 : 0.55;
     this.leftFlame.scale.set(1, flameScale, 1);
     this.rightFlame.scale.set(1, flameScale, 1);
@@ -599,7 +615,7 @@ export class ShipPlayer {
       mesh.visible = true;
       mesh.scale.setScalar(enabled ? 0.82 : 1);
     });
-    this.cameraAnchor.position.set(enabled ? 4.15 : 2.55, enabled ? 1.86 : 1.34, 0);
+    this.cameraAnchor.position.set(enabled ? 4.85 : 2.8, enabled ? 2.08 : 1.42, 0);
   }
 }
 
