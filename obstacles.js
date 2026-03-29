@@ -24,6 +24,8 @@ export class ObstacleManager {
     this.station = null;
     this.stopovers = [];
     this.optionalTasks = [];
+    this.corridorAnchors = [];
+    this.routeEvents = [];
     this.gate = null;
     this.wormhole = null;
     this.navigationBeacons = {};
@@ -63,6 +65,8 @@ export class ObstacleManager {
     this.station = null;
     this.stopovers = [];
     this.optionalTasks = [];
+    this.corridorAnchors = [];
+    this.routeEvents = [];
     this.gate = null;
     this.wormhole = null;
     this.navigationBeacons = {};
@@ -137,6 +141,25 @@ export class ObstacleManager {
       radius: task.radius * 0.18
     }));
 
+    const corridorAnchors = (segment.corridorAnchors ?? [
+      { worldX: 0, worldY: 360, width: 200, sector: "Freight Lane", beat: "Transfer lane", assist: 3.8 },
+      { worldX: segment.length, worldY: 360, width: 200, sector: "Freight Lane", beat: "Approach", assist: 4.2 }
+    ]).map((anchor) => ({
+      ...anchor,
+      x: routeStartX + scaleX(anchor.worldX),
+      z: this.toRouteZ(anchor.worldY),
+      width: Math.max(96, anchor.width * 0.72),
+      assist: anchor.assist ?? 3.6
+    }));
+
+    const routeEvents = (segment.routeEvents ?? []).map((event) => ({
+      ...event,
+      x: routeStartX + scaleX(event.worldX),
+      z: this.toRouteZ(event.worldY),
+      span: Math.max(360, scaleX(event.span ?? 1800)),
+      width: Math.max(90, (event.width ?? 160) * 0.7)
+    }));
+
     return {
       departure,
       routeStartX,
@@ -156,6 +179,8 @@ export class ObstacleManager {
       },
       stopovers,
       optionalTasks,
+      corridorAnchors,
+      routeEvents,
       wormhole,
       arrival: {
         title: segment.arrival?.title ?? segment.destinationLabel,
@@ -529,6 +554,13 @@ export class ObstacleManager {
       this.planets.push({ mesh: sphere, glow });
     });
 
+    this.corridorAnchors = this.segmentWorld.corridorAnchors.map((anchor) => ({ ...anchor }));
+    this.routeEvents = this.segmentWorld.routeEvents.map((event) => this.createRouteEventObject(event));
+    this.routeEvents.forEach((event) => {
+      this.flightGroup.add(event.mesh);
+    });
+    this.createCorridorLaneVisuals();
+
     this.segment.debrisFields.forEach((field) => {
       for (let index = 0; index < field.count; index += 1) {
         const t = field.count === 1 ? 0.5 : index / (field.count - 1);
@@ -846,6 +878,132 @@ export class ObstacleManager {
     return { ...task, mesh: group };
   }
 
+  createCorridorLaneVisuals() {
+    const THREE = this.THREE;
+    if (this.corridorAnchors.length < 2) {
+      return;
+    }
+
+    const laneMaterial = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.12 });
+    const edgeMaterial = new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.24 });
+    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.78 });
+
+    for (let index = 0; index < this.corridorAnchors.length - 1; index += 1) {
+      const anchor = this.corridorAnchors[index];
+      const next = this.corridorAnchors[index + 1];
+      const dx = next.x - anchor.x;
+      const dz = next.z - anchor.z;
+      const length = Math.hypot(dx, dz);
+      const heading = Math.atan2(dz, dx);
+      const centerX = (anchor.x + next.x) / 2;
+      const centerZ = (anchor.z + next.z) / 2;
+      const width = (anchor.width + next.width) / 2;
+      const normalX = -Math.sin(heading) * width * 0.18;
+      const normalZ = Math.cos(heading) * width * 0.18;
+
+      const lane = new THREE.Mesh(new THREE.BoxGeometry(length, 0.05, Math.max(18, width * 0.3)), laneMaterial.clone());
+      lane.position.set(centerX, -0.12, centerZ);
+      lane.rotation.y = -heading;
+      this.flightGroup.add(lane);
+
+      const leftEdge = new THREE.Mesh(new THREE.BoxGeometry(length, 0.06, 1.2), edgeMaterial.clone());
+      leftEdge.position.set(centerX - normalX, 0.08, centerZ - normalZ);
+      leftEdge.rotation.y = -heading;
+      this.flightGroup.add(leftEdge);
+
+      const rightEdge = leftEdge.clone();
+      rightEdge.position.set(centerX + normalX, 0.08, centerZ + normalZ);
+      this.flightGroup.add(rightEdge);
+
+      const markerCount = Math.max(4, Math.round(length / 260));
+      for (let markerIndex = 0; markerIndex <= markerCount; markerIndex += 1) {
+        const t = markerCount === 0 ? 0 : markerIndex / markerCount;
+        const x = anchor.x + dx * t;
+        const z = anchor.z + dz * t;
+        const marker = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 8), markerMaterial.clone());
+        marker.position.set(x, 0.4, z);
+        this.flightGroup.add(marker);
+      }
+    }
+  }
+
+  createRouteEventObject(event) {
+    const THREE = this.THREE;
+    const group = new THREE.Group();
+
+    if (event.type === "traffic") {
+      const pylonMaterial = new THREE.MeshStandardMaterial({ color: 0x0f172a, emissive: 0x2563eb, emissiveIntensity: 0.44 });
+      const lightMaterial = new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.86 });
+      for (let index = 0; index < 7; index += 1) {
+        const offset = -event.span / 2 + (event.span / 6) * index;
+        const towerLeft = new THREE.Mesh(new THREE.BoxGeometry(3, 16, 3), pylonMaterial);
+        towerLeft.position.set(offset, 8, -event.width * 0.32);
+        const towerRight = towerLeft.clone();
+        towerRight.position.z = event.width * 0.32;
+        const crossLight = new THREE.Mesh(new THREE.BoxGeometry(6, 0.28, event.width * 0.56), lightMaterial);
+        crossLight.position.set(offset, 1.1, 0);
+        group.add(towerLeft, towerRight, crossLight);
+      }
+    } else if (event.type === "braid") {
+      const braidMaterial = new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.18 });
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(event.span, 0.08, 8), braidMaterial);
+      upper.position.set(0, 0.24, -event.width * 0.28);
+      upper.rotation.y = -0.12;
+      const lower = upper.clone();
+      lower.position.z = event.width * 0.28;
+      lower.rotation.y = 0.12;
+      const core = new THREE.Mesh(
+        new THREE.OctahedronGeometry(7, 0),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.95, metalness: 0.08, emissive: 0x1e293b, emissiveIntensity: 0.2 })
+      );
+      core.position.set(0, 8, 0);
+      group.add(upper, lower, core);
+    } else if (event.type === "ring") {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(event.width * 0.6, 2.4, 18, 84),
+        new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0x7c2d12, emissiveIntensity: 0.36, roughness: 0.7 })
+      );
+      ring.rotation.z = Math.PI / 2;
+      ring.rotation.x = 0.34;
+      const shadow = new THREE.Mesh(
+        new THREE.CircleGeometry(event.width * 0.88, 42),
+        new THREE.MeshBasicMaterial({ color: 0x1e293b, transparent: true, opacity: 0.12 })
+      );
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.y = -0.18;
+      group.add(ring, shadow);
+    } else if (event.type === "relay") {
+      const relayMaterial = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.84, metalness: 0.12 });
+      const beamMaterial = new THREE.MeshBasicMaterial({ color: 0xa5b4fc, transparent: true, opacity: 0.24 });
+      for (let index = 0; index < 5; index += 1) {
+        const x = -event.span * 0.4 + index * (event.span * 0.2);
+        const pylonLeft = new THREE.Mesh(new THREE.BoxGeometry(2.8, 28, 2.8), relayMaterial);
+        pylonLeft.position.set(x, 14, -event.width * 0.3);
+        const pylonRight = pylonLeft.clone();
+        pylonRight.position.z = event.width * 0.3;
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(4, 10, event.width * 0.48), beamMaterial);
+        beam.position.set(x, 10, 0);
+        group.add(pylonLeft, pylonRight, beam);
+      }
+    } else if (event.type === "terminal") {
+      const guideMaterial = new THREE.MeshBasicMaterial({ color: 0x4ade80, transparent: true, opacity: 0.2 });
+      const left = new THREE.Mesh(new THREE.BoxGeometry(event.span, 0.08, 6), guideMaterial);
+      left.position.set(0, 0.15, -event.width * 0.26);
+      left.rotation.y = -0.08;
+      const right = left.clone();
+      right.position.z = event.width * 0.26;
+      right.rotation.y = 0.08;
+      group.add(left, right);
+    }
+
+    const sprite = this.createLabelSprite(event.label, event.type === "relay" ? 0xa5b4fc : event.type === "ring" ? 0xfbbf24 : 0x67e8f9);
+    sprite.position.set(0, 20, 0);
+    group.add(sprite);
+    group.position.set(event.x, 0, event.z);
+
+    return { ...event, mesh: group };
+  }
+
   createStationObject() {
     const THREE = this.THREE;
     const group = new THREE.Group();
@@ -1024,7 +1182,7 @@ export class ObstacleManager {
     context.textAlign = "center";
     context.fillText(text, canvas.width / 2, 46);
     const texture = new THREE.CanvasTexture(canvas);
-    const material = new THREE.SpriteMaterial({ map: texture, color });
+    const material = new THREE.SpriteMaterial({ map: texture, color, transparent: true, opacity: 0.92 });
     const sprite = new THREE.Sprite(material);
     sprite.scale.set(18, 5.2, 1);
     return sprite;
@@ -1057,6 +1215,17 @@ export class ObstacleManager {
     this.optionalTasks.forEach((task, index) => {
       task.mesh.rotation.y += deltaTime * (0.7 + index * 0.04);
       task.mesh.position.y = 8 + Math.sin(state.time * 1.8 + index) * 1.6;
+    });
+
+    this.routeEvents.forEach((event, index) => {
+      event.mesh.position.y = Math.sin(state.time * 0.75 + index * 0.6) * 0.5;
+      if (event.type === "ring" || event.type === "relay") {
+        event.mesh.rotation.y += deltaTime * (event.type === "ring" ? 0.06 : 0.1);
+      }
+      const labelSprite = event.mesh.children[event.mesh.children.length - 1];
+      if (labelSprite?.material) {
+        labelSprite.material.opacity = 0.72 + Math.sin(state.time * 2 + index) * 0.18;
+      }
     });
 
     if (this.station) {
@@ -1290,13 +1459,68 @@ export class ObstacleManager {
     return this.segmentWorld.routeStartX;
   }
 
+  getRouteGuidance(ship, completedTaskIds = [], stopIndex = 0, wormholeUsed = false) {
+    const anchors = this.corridorAnchors.length > 0 ? this.corridorAnchors : [
+      { x: this.segmentWorld.routeStartX, z: 0, width: 180, sector: "Freight Lane", beat: "Transfer lane", assist: 3.6 },
+      { x: this.segmentWorld.routeLength, z: 0, width: 180, sector: "Freight Lane", beat: "Approach", assist: 4.2 }
+    ];
+
+    let previous = anchors[0];
+    let next = anchors[anchors.length - 1];
+    for (let index = 0; index < anchors.length - 1; index += 1) {
+      if (ship.position.x >= anchors[index].x && ship.position.x <= anchors[index + 1].x) {
+        previous = anchors[index];
+        next = anchors[index + 1];
+        break;
+      }
+      if (ship.position.x < anchors[0].x) {
+        previous = anchors[0];
+        next = anchors[1] ?? anchors[0];
+        break;
+      }
+    }
+
+    const segmentSpan = Math.max(next.x - previous.x, 1);
+    const mix = clamp((ship.position.x - previous.x) / segmentSpan, 0, 1);
+    const targetZ = previous.z + (next.z - previous.z) * mix;
+    const laneWidth = previous.width + (next.width - previous.width) * mix;
+    const forwardAssist = previous.assist + (next.assist - previous.assist) * mix;
+    const currentEvent =
+      this.routeEvents.find((event) => Math.abs(ship.position.x - event.x) <= event.span * 0.55) ?? null;
+    const nextStopover = this.stopovers[stopIndex] ?? null;
+    const nearbyDetour =
+      this.optionalTasks.find(
+        (task) =>
+          !completedTaskIds.includes(task.id) &&
+          task.x > ship.position.x - 120 &&
+          task.x < ship.position.x + 1500 &&
+          Math.abs(task.z - targetZ) > laneWidth * 0.22
+      ) ?? null;
+
+    return {
+      targetZ,
+      targetY: currentEvent?.type === "ring" ? 12 : currentEvent?.type === "relay" ? 8 : 0,
+      verticalAssist: currentEvent?.type === "ring" ? 0.08 : currentEvent?.type === "relay" ? 0.05 : 0.02,
+      laneWidth,
+      laneAssist: 0.015 + (laneWidth < 150 ? 0.008 : 0.003),
+      forwardAssist,
+      sectorLabel: currentEvent?.sector ?? (mix < 0.55 ? previous.sector : next.sector),
+      beatLabel: currentEvent?.label ?? (mix < 0.55 ? previous.beat : next.beat),
+      detourLabel: nearbyDetour?.label ?? "",
+      nextStopover,
+      wormholeAvailable: !!(this.wormhole && !wormholeUsed)
+    };
+  }
+
   getNavigationPoints(wormholeUsed = false) {
     return {
       station: this.station ? { x: this.station.x, z: this.station.z } : null,
       stopovers: this.stopovers.map((stopover) => ({ id: stopover.id, x: stopover.x, z: stopover.z })),
       gate: { x: this.gate.x, z: this.gate.z },
       wormhole: this.wormhole && !wormholeUsed ? { x: this.wormhole.x, z: this.wormhole.z } : null,
-      optionalTasks: this.optionalTasks.map((task) => ({ id: task.id, x: task.x, z: task.z }))
+      optionalTasks: this.optionalTasks.map((task) => ({ id: task.id, x: task.x, z: task.z })),
+      corridorAnchors: this.corridorAnchors.map((anchor) => ({ x: anchor.x, z: anchor.z })),
+      routeEvents: this.routeEvents.map((event) => ({ id: event.id, x: event.x, z: event.z, type: event.type }))
     };
   }
 

@@ -473,6 +473,7 @@ export class ShipPlayer {
     this.renderOrientation = 0;
     this.renderPitch = 0;
     this.lastThrusting = false;
+    this.lastBoosting = false;
     this.lastStats = { ...stats };
     this.syncSceneObject();
   }
@@ -489,26 +490,28 @@ export class ShipPlayer {
     const targetPitch = clamp(Number.isFinite(viewState.pitch) ? viewState.pitch : 0, -0.42, 0.38);
     const throttle = (input.w ? 1 : 0) - (input.s ? 0.7 : 0);
     const strafe = (input.d ? 1 : 0) - (input.a ? 1 : 0);
-    const verticalInput = (input.space ? 1 : 0) - ((input.shift || input.ctrl) ? 1 : 0);
+    const verticalInput = (input.space ? 1 : 0) - (input.ctrl ? 1 : 0);
+    const boosting = !!input.shift && throttle > 0;
     const thrusting = throttle !== 0 || strafe !== 0 || verticalInput !== 0;
 
     this.orientation = lerpAngle(this.orientation, targetYaw, clamp(deltaTime * (1.35 + safeStats.handling * 0.08), 0, 1));
     this.pitch += (targetPitch - this.pitch) * clamp(deltaTime * 1.55, 0, 1);
 
-    const forwardAcceleration = this.baseAcceleration + safeStats.engine * 2.8;
+    const boostFactor = boosting ? 1.68 : 1;
+    const forwardAcceleration = (this.baseAcceleration + safeStats.engine * 2.8) * boostFactor;
     const lateralAcceleration = this.baseLateralAcceleration + safeStats.handling * 1.25;
     const verticalAcceleration = this.baseVerticalAcceleration + safeStats.engine * 1.5 + safeStats.handling * 0.9;
-    const maxForwardSpeed = this.baseMaxForwardSpeed + safeStats.engine * 4.6;
+    const maxForwardSpeed = (this.baseMaxForwardSpeed + safeStats.engine * 4.6) * (boosting ? 1.48 : 1);
     const maxLateralSpeed = this.baseMaxLateralSpeed + safeStats.handling * 1.4;
     const maxVerticalSpeed = this.baseMaxVerticalSpeed + safeStats.engine * 1.3;
-    const verticalLift = this.baseLift + safeStats.engine * 1.8;
+    const verticalLift = (this.baseLift + safeStats.engine * 1.8) * (boosting ? 1.08 : 1);
 
-    const forwardX = Math.cos(this.orientation);
-    const forwardZ = Math.sin(this.orientation);
-    const rightX = Math.cos(this.orientation + Math.PI / 2);
-    const rightZ = Math.sin(this.orientation + Math.PI / 2);
-    const pitchLiftFactor = Math.sin(this.pitch);
-    const flatPitchFactor = Math.max(0.2, Math.cos(Math.abs(this.pitch)));
+    const forwardX = Math.cos(targetYaw);
+    const forwardZ = Math.sin(targetYaw);
+    const rightX = Math.cos(targetYaw + Math.PI / 2);
+    const rightZ = Math.sin(targetYaw + Math.PI / 2);
+    const pitchLiftFactor = Math.sin(targetPitch);
+    const flatPitchFactor = Math.max(0.28, Math.cos(Math.abs(targetPitch)));
 
     this.velocity.x += forwardX * throttle * forwardAcceleration * flatPitchFactor * deltaTime;
     this.velocity.z += forwardZ * throttle * forwardAcceleration * flatPitchFactor * deltaTime;
@@ -529,14 +532,21 @@ export class ShipPlayer {
     }
 
     if (environment.stabilizeZ) {
-      this.velocity.z += (0 - this.position.z) * environment.stabilizeZ * deltaTime;
+      this.velocity.z += ((environment.targetZ ?? 0) - this.position.z) * environment.stabilizeZ * deltaTime;
     }
     if (environment.stabilizeY) {
-      this.velocity.y += (environment.targetY - this.position.y) * environment.stabilizeY * deltaTime;
+      this.velocity.y += ((environment.targetY ?? this.position.y) - this.position.y) * environment.stabilizeY * deltaTime;
     }
 
-    this.velocity.x *= Math.exp(-0.52 * deltaTime);
-    this.velocity.z *= Math.exp(-(1.55 - safeStats.handling * 0.04) * deltaTime);
+    if (throttle > 0 || strafe !== 0) {
+      const lateralAlongRight = this.velocity.x * rightX + this.velocity.z * rightZ;
+      const steerAssist = clamp(deltaTime * (1.6 + safeStats.handling * 0.12 + (boosting ? 0.28 : 0)), 0, 1);
+      this.velocity.x -= rightX * lateralAlongRight * steerAssist;
+      this.velocity.z -= rightZ * lateralAlongRight * steerAssist;
+    }
+
+    this.velocity.x *= Math.exp(-(0.72 + (boosting ? 0.06 : 0)) * deltaTime);
+    this.velocity.z *= Math.exp(-(1.78 - safeStats.handling * 0.05) * deltaTime);
     this.velocity.y *= Math.exp(-(1.72 - safeStats.durability * 0.04) * deltaTime);
 
     const planarSpeed = Math.hypot(this.velocity.x, this.velocity.z);
@@ -561,10 +571,12 @@ export class ShipPlayer {
     this.renderOrientation = lerpAngle(this.renderOrientation, this.orientation, clamp(deltaTime * 3.8, 0, 1));
     this.renderPitch += (this.pitch - this.renderPitch) * clamp(deltaTime * 3.4, 0, 1);
     this.lastThrusting = thrusting;
+    this.lastBoosting = boosting;
     this.syncSceneObject();
 
     return {
       thrusting,
+      boosting,
       speed: Math.hypot(this.velocity.x, this.velocity.z),
       stable: Math.hypot(this.velocity.x, this.velocity.z, this.velocity.y) < 22 + safeStats.durability * 1.9,
       driftRatio: clamp(Math.abs(lateralAlongRight) / Math.max(maxLateralSpeed, 1), 0, 1)
@@ -576,12 +588,12 @@ export class ShipPlayer {
     this.group.rotation.y = -this.renderOrientation;
     this.group.rotation.z = clamp(-this.velocity.z * 0.014, -0.18, 0.18);
     this.group.rotation.x = clamp(-this.renderPitch * 0.44 + this.velocity.y * 0.015, -0.24, 0.24);
-    const flameScale = this.lastThrusting ? 1.32 : 0.55;
+    const flameScale = this.lastBoosting ? 1.8 : this.lastThrusting ? 1.32 : 0.55;
     this.leftFlame.scale.set(1, flameScale, 1);
     this.rightFlame.scale.set(1, flameScale, 1);
-    this.leftFlame.material.opacity = this.lastThrusting ? 0.98 : 0.38;
-    this.rightFlame.material.opacity = this.lastThrusting ? 0.98 : 0.38;
-    this.thrusterGlow.intensity = this.lastThrusting ? 3 : 1.15;
+    this.leftFlame.material.opacity = this.lastBoosting ? 1 : this.lastThrusting ? 0.98 : 0.38;
+    this.rightFlame.material.opacity = this.lastBoosting ? 1 : this.lastThrusting ? 0.98 : 0.38;
+    this.thrusterGlow.intensity = this.lastBoosting ? 4.4 : this.lastThrusting ? 3 : 1.15;
   }
 
   getTelemetry() {
@@ -591,7 +603,8 @@ export class ShipPlayer {
       position: { ...this.position },
       orientation: this.renderOrientation,
       pitch: this.renderPitch,
-      thrusting: this.lastThrusting
+      thrusting: this.lastThrusting,
+      boosting: !!this.lastBoosting
     };
   }
 

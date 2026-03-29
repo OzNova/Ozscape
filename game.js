@@ -129,6 +129,24 @@ const SEGMENTS = [
       { id: "scan-b", label: "Ring Survey", worldX: 24400, worldY: 120, radius: 130, reward: 140, fuelBonus: 14 },
       { id: "cache-c", label: "Relay Salvage", worldX: 46800, worldY: 580, radius: 145, reward: 170, fuelBonus: 20 }
     ],
+    corridorAnchors: [
+      { worldX: 0, worldY: 360, width: 220, sector: "Departure Transfer", beat: "Freight lane handoff", assist: 4.2 },
+      { worldX: 5200, worldY: 300, width: 180, sector: "Fracture Belt", beat: "Debris braid", assist: 3.6 },
+      { worldX: 11200, worldY: 560, width: 156, sector: "Fracture Belt", beat: "Upper split channel", assist: 3.9 },
+      { worldX: 17800, worldY: 240, width: 172, sector: "Atlas Ring Skim", beat: "Ring-shadow slip", assist: 3.4 },
+      { worldX: 25600, worldY: 470, width: 164, sector: "Atlas Ring Skim", beat: "Gravity shear lane", assist: 3.2 },
+      { worldX: 33200, worldY: 200, width: 176, sector: "Relay Corridor", beat: "Traffic blackout run", assist: 3.3 },
+      { worldX: 41000, worldY: 520, width: 168, sector: "Relay Corridor", beat: "Pylon weave", assist: 3.8 },
+      { worldX: 48600, worldY: 300, width: 184, sector: "Helios Approach", beat: "Terminal insertion lane", assist: 4.1 },
+      { worldX: 53400, worldY: 320, width: 228, sector: "Helios Approach", beat: "Gate final", assist: 4.6 }
+    ],
+    routeEvents: [
+      { id: "traffic", type: "traffic", label: "Freight lane handoff", worldX: 3200, worldY: 340, span: 2200, width: 190, sector: "Departure Transfer" },
+      { id: "braid", type: "braid", label: "Debris braid", worldX: 9800, worldY: 430, span: 3000, width: 170, sector: "Fracture Belt" },
+      { id: "ring", type: "ring", label: "Ring-shadow slip", worldX: 22400, worldY: 250, span: 3600, width: 200, sector: "Atlas Ring Skim" },
+      { id: "relay", type: "relay", label: "Relay pylon weave", worldX: 39600, worldY: 420, span: 3200, width: 180, sector: "Relay Corridor" },
+      { id: "terminal", type: "terminal", label: "Helios insertion lane", worldX: 50000, worldY: 310, span: 2600, width: 210, sector: "Helios Approach" }
+    ],
     arrival: {
       title: "Helios Deep Terminal",
       subtitle: "Outer-system logistics exchange",
@@ -653,7 +671,7 @@ export class Game {
     if (!this.run.launchAuthorized) {
       this.statusText = "Freighter powered on.";
       this.objectiveText = "Ignite launch, then climb through the corridor.";
-      this.promptText = "Press E to ignite launch. Use W/S to thrust, A/D to trim, Space to rise, Shift to descend, and C to change camera.";
+      this.promptText = "Press E to ignite launch. Use W/S to thrust, A/D to trim, Space to rise, Ctrl to descend, hold Shift to boost, and C to change camera.";
       if (interact) {
         this.run.launchAuthorized = true;
         this.setToast("Launch ignition confirmed. Climb out of the port.", 2);
@@ -680,7 +698,8 @@ export class Game {
     );
 
     this.run.fuel = clamp(
-      safeNumber(this.run.fuel, maxFuel) - (0.05 + (movement.thrusting ? 0.12 : 0) + (launchForce.dragPenalty ?? 0)) * deltaTime,
+      safeNumber(this.run.fuel, maxFuel) -
+        (0.05 + (movement.thrusting ? 0.12 : 0) + (movement.boosting ? 0.22 : 0) + (launchForce.dragPenalty ?? 0)) * deltaTime,
       0,
       maxFuel
     );
@@ -758,6 +777,7 @@ export class Game {
     const nextStopover = this.getActiveStopover();
     const docking = this.obstacles.getStopoverInfo(this.player, this.run.stopIndex);
     const optionalTask = this.obstacles.getOptionalTaskInfo(this.player, this.run.optionalTaskIds);
+    const routeGuidance = this.obstacles.getRouteGuidance(this.player, this.run.optionalTaskIds, this.run.stopIndex, this.run.wormholeUsed);
 
     const environment = {
       force: {
@@ -765,8 +785,11 @@ export class Game {
         y: gravity.active ? gravity.force.y : 0,
         z: (gravity.active ? gravity.force.z : 0) + (ionStorm.active ? Math.sin(this.time * 6.5) * ionStorm.controlPenalty * 8 : 0)
       },
-      forwardAssist: stats.cruiseSpeed * 0.12,
-      stabilizeZ: 0.04
+      forwardAssist: routeGuidance.forwardAssist * (this.input.w ? 1 : 0.22),
+      stabilizeZ: routeGuidance.laneAssist,
+      targetZ: routeGuidance.targetZ,
+      targetY: routeGuidance.targetY,
+      stabilizeY: routeGuidance.verticalAssist
     };
 
     const movement = this.player.update(
@@ -797,7 +820,14 @@ export class Game {
 
     this.run.fuel = clamp(
       safeNumber(this.run.fuel, maxFuel) -
-        (0.18 + (movement.thrusting ? 0.24 : 0) + gravity.fuelPenalty * 0.45 + ionStorm.fuelPenalty * 0.45) * deltaTime,
+        (
+          0.16 +
+          (movement.thrusting ? 0.2 : 0) +
+          (movement.boosting ? 0.46 : 0) +
+          gravity.fuelPenalty * 0.45 +
+          ionStorm.fuelPenalty * 0.45
+        ) *
+          deltaTime,
       0,
       maxFuel
     );
@@ -844,20 +874,22 @@ export class Game {
       this.promptText = "Wormhole corridor ahead. Align and stabilize to enter.";
     } else {
       this.promptText = nextStopover
-        ? `Follow the beacon to ${nextStopover.label}${targetDistance ? ` (${targetDistance})` : ""}.`
-        : `Follow the gate beacon to ${this.segment.destinationLabel}${targetDistance ? ` (${targetDistance})` : ""}.`;
+        ? `${routeGuidance.beatLabel}. Follow the beacon to ${nextStopover.label}${targetDistance ? ` (${targetDistance})` : ""}.`
+        : `${routeGuidance.beatLabel}. Follow the gate beacon to ${this.segment.destinationLabel}${targetDistance ? ` (${targetDistance})` : ""}.`;
     }
 
     if (!this.pointerLocked) {
       this.promptText = `Click the view to capture the camera. ${this.promptText}`;
     }
 
-    this.statusText = nextStopover
-      ? `Next stop: ${nextStopover.label}.`
-      : "All mid-route stops complete. Final delivery window is open.";
+    this.statusText = `${routeGuidance.sectorLabel}: ${routeGuidance.beatLabel}.`;
     this.objectiveText = nextStopover
-      ? `Dock at ${nextStopover.label} and complete the ground task.`
-      : `Reach ${this.segment.destinationLabel}. ${this.segment.wormhole ? "Wormhole remains optional." : ""}`;
+      ? `Hold the freight lane and dock at ${nextStopover.label}.`
+      : `Stay on the Helios approach and reach ${this.segment.destinationLabel}. ${this.segment.wormhole ? "Wormhole remains optional." : ""}`;
+
+    if (routeGuidance.detourLabel && !optionalTask) {
+      this.promptText += ` Optional detour nearby: ${routeGuidance.detourLabel}.`;
+    }
 
     if (this.obstacles.getGateInfo(this.player).inZone && this.run.stopIndex >= this.segment.stopovers.length) {
       this.completeMission();
@@ -1207,7 +1239,12 @@ export class Game {
         lookAt.x += telemetry.velocity.x * 0.58;
         lookAt.y += telemetry.velocity.y * 0.22;
         lookAt.z += telemetry.velocity.z * 0.36;
-        this.tempVectorA.y += this.shipCameraMode === "close" ? 0.45 : 1.1;
+        if (telemetry.boosting) {
+          this.tempVectorA.x -= this.shipCameraMode === "close" ? 3.4 : 5.8;
+          this.tempVectorA.y += this.shipCameraMode === "close" ? 0.7 : 1.6;
+        } else {
+          this.tempVectorA.y += this.shipCameraMode === "close" ? 0.45 : 1.1;
+        }
         this.camera.position.lerp(this.tempVectorA, clamp(deltaTime * (this.shipCameraMode === "close" ? 5.8 : 4.2), 0, 1));
         this.cameraTarget.lerp(lookAt, clamp(deltaTime * 6.4, 0, 1));
       }
@@ -1368,7 +1405,7 @@ export class Game {
     const height = canvas.height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const range = this.state === "launch" ? 1400 : this.isShipState() ? 2600 : 220;
+    const range = this.state === "launch" ? 1800 : this.isShipState() ? 3200 : 220;
     const points = this.obstacles.getNavigationPoints(this.run.wormholeUsed);
     const trackedPosition = this.isOnFootState() ? this.character.position : this.player.position;
     const trackedYaw = this.isOnFootState() ? this.look.yaw : this.look.yaw;
@@ -1392,23 +1429,48 @@ export class Game {
     ctx.lineTo(width, centerY);
     ctx.stroke();
 
-    const drawPoint = (x, z, color, size = 4) => {
+    const projectPoint = (x, z) => {
       const dx = x - trackedPosition.x;
       const dz = z - trackedPosition.z;
       const cos = Math.cos(-trackedYaw + Math.PI / 2);
       const sin = Math.sin(-trackedYaw + Math.PI / 2);
       const rx = dx * cos - dz * sin;
       const rz = dx * sin + dz * cos;
-      const px = centerX + clamp(rx / range, -0.9, 0.9) * (width * 0.42);
-      const py = centerY + clamp(rz / range, -0.9, 0.9) * (height * 0.42);
+      return {
+        px: centerX + clamp(rx / range, -0.9, 0.9) * (width * 0.42),
+        py: centerY + clamp(rz / range, -0.9, 0.9) * (height * 0.42)
+      };
+    };
+
+    const drawPoint = (x, z, color, size = 4) => {
+      const { px, py } = projectPoint(x, z);
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(px, py, size, 0, Math.PI * 2);
       ctx.fill();
     };
 
+    if (this.isShipState() || this.state === "launch") {
+      const corridor = points.corridorAnchors ?? [];
+      if (corridor.length > 1) {
+        ctx.strokeStyle = "rgba(103, 232, 249, 0.28)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        corridor.forEach((anchor, index) => {
+          const { px, py } = projectPoint(anchor.x, anchor.z);
+          if (index === 0) {
+            ctx.moveTo(px, py);
+          } else {
+            ctx.lineTo(px, py);
+          }
+        });
+        ctx.stroke();
+      }
+    }
+
     hazards.forEach((hazard) => drawPoint(hazard.x, hazard.z, hazard.kind === "asteroid" ? "#fca5a5" : "#cbd5e1", 2.2));
     if (this.isShipState() || this.state === "launch") {
+      points.routeEvents?.forEach((event) => drawPoint(event.x, event.z, event.type === "relay" ? "#c4b5fd" : event.type === "ring" ? "#fbbf24" : "#67e8f9", 2.2));
       points.stopovers?.forEach((stopover, index) => {
         drawPoint(stopover.x, stopover.z, index === 0 ? "#38bdf8" : "#f59e0b", target?.label === this.segment.stopovers?.[index]?.label ? 4.6 : 3.4);
       });
@@ -1572,7 +1634,7 @@ export class Game {
       this.addDetail(detailsEl, `Destination: ${this.segment.destinationLabel}`);
       this.addDetail(detailsEl, `Optional space bonuses: ${this.segment.optionalTasks.length}`);
       this.addDetail(detailsEl, `Wormhole bonus: ${this.segment.wormhole ? `${this.segment.wormhole.rewardBonus} credits` : "None"}`);
-      this.addDetail(detailsEl, "Controls: WASD, Shift sprint/descend, Space rise, E interact, C camera");
+      this.addDetail(detailsEl, "Controls: WASD, Shift sprint/boost, Ctrl descend, Space rise, E interact, C camera");
       startButton.textContent = "Begin Boarding";
       startButton.disabled = false;
       restartButton.textContent = "Back";
@@ -1637,7 +1699,7 @@ export class Game {
 
   buildHelpMarkup() {
     const stateCard = this.isShipState()
-      ? `<div class="help-card"><h3>Current Phase</h3><p>Ship flight: use <strong>C</strong> to cycle cockpit, chase, and far-chase cameras. Fly with <strong>W/S</strong>, trim with <strong>A/D</strong>, rise with <strong>Space</strong>, descend with <strong>Shift</strong>, and press <strong>E</strong> to dock or secure nearby bonus caches. The radar tracks stopovers, side tasks, and major hazards.</p></div>`
+      ? `<div class="help-card"><h3>Current Phase</h3><p>Ship flight: use <strong>C</strong> to cycle cockpit, chase, and far-chase cameras. Thrust with <strong>W/S</strong>, trim with <strong>A/D</strong>, rise with <strong>Space</strong>, descend with <strong>Ctrl</strong>, and hold <strong>Shift</strong> to boost. The ship now drives toward where you look, and the radar tracks stopovers, side tasks, and sector beats.</p></div>`
       : this.isOnFootState()
         ? `<div class="help-card"><h3>Current Phase</h3><p>Courier first-person: click the view to capture the mouse, use <strong>WASD</strong> to move, hold <strong>Shift</strong> to sprint, follow the floor guides and radar, and press <strong>E</strong> when you are fully inside the highlighted interaction zone.</p></div>`
         : `<div class="help-card"><h3>Current Phase</h3><p>Use the command card to begin or continue the current contract. Once you are in gameplay, click the view to capture the mouse and press <strong>H</strong> anytime to reopen this help panel.</p></div>`;
@@ -1646,7 +1708,7 @@ export class Game {
       ${stateCard}
       <div class="help-card">
         <h3>Core Controls</h3>
-        <p><strong>WASD</strong> move or fly, <strong>Mouse</strong> look, <strong>Shift</strong> sprints on foot or descends in the ship, <strong>Space</strong> rises in the ship, <strong>C</strong> cycles ship cameras, <strong>E</strong> interacts, docks, boards, and secures optional caches, <strong>H</strong> or <strong>F1</strong> opens help, and <strong>Esc</strong> releases the mouse.</p>
+        <p><strong>WASD</strong> move or fly, <strong>Mouse</strong> look, <strong>Shift</strong> sprints on foot or boosts the ship, <strong>Space</strong> rises in the ship, <strong>Ctrl</strong> descends, <strong>C</strong> cycles ship cameras, <strong>E</strong> interacts, docks, boards, and secures optional caches, <strong>H</strong> or <strong>F1</strong> opens help, and <strong>Esc</strong> releases the mouse.</p>
       </div>
       <div class="help-card">
         <h3>Contract Flow</h3>
@@ -1654,7 +1716,7 @@ export class Game {
       </div>
       <div class="help-card">
         <h3>Route Rules</h3>
-        <p>Collisions fail the route. Fuel drains during launch and flight. Follow the radar to the next mandatory stop, leave the ship when required, finish the ground objective, then reboard to keep the contract moving.</p>
+        <p>Collisions fail the route. Fuel drains during launch and flight, and boost spends more of it. Follow the radar and the sector beacons, choose a clean lane through each set-piece, leave the ship when required, finish the ground objective, then reboard to keep the contract moving.</p>
       </div>
       <div class="help-card">
         <h3>Bonuses And Finish</h3>
