@@ -619,7 +619,15 @@ export class Game {
 
   updateBoarding(deltaTime) {
     this.scene.fog.density = 0.0054;
-    const movement = this.character.update(this.input, deltaTime, { minX: -170, maxX: 170, minZ: -90, maxZ: 90 }, this.look);
+    const boardingBounds = this.obstacles.getOnFootBounds("boarding");
+    const movement = this.character.update(
+      this.input,
+      deltaTime,
+      boardingBounds,
+      this.look,
+      (currentPosition, attemptedPosition, radius) =>
+        this.obstacles.resolveOnFootMovement("boarding", currentPosition, attemptedPosition, radius)
+    );
     const cargo = this.obstacles.getCargoCheckpointInfo(this.character);
     const boarding = this.obstacles.getBoardingInfo(this.character);
     const interact = this.consumeInteract();
@@ -950,7 +958,14 @@ export class Game {
     }
 
     const hub = stopover.hub;
-    const movement = this.character.update(this.input, deltaTime, hub.bounds, this.look);
+    const movement = this.character.update(
+      this.input,
+      deltaTime,
+      this.obstacles.getOnFootBounds("hub", stopover),
+      this.look,
+      (currentPosition, attemptedPosition, radius) =>
+        this.obstacles.resolveOnFootMovement("hub", currentPosition, attemptedPosition, radius, stopover)
+    );
     const mandatory = this.obstacles.getHubInteractionInfo(this.character, "mandatory");
     const optional = this.obstacles.getHubInteractionInfo(this.character, "optional");
     const board = this.obstacles.getHubInteractionInfo(this.character, "board");
@@ -1023,7 +1038,14 @@ export class Game {
 
   updateArrival(deltaTime) {
     this.scene.fog.density += (0.0038 - this.scene.fog.density) * clamp(deltaTime * 2, 0, 1);
-    const movement = this.character.update(this.input, deltaTime, { minX: -74, maxX: 82, minZ: -54, maxZ: 54 }, this.look);
+    const movement = this.character.update(
+      this.input,
+      deltaTime,
+      this.obstacles.getOnFootBounds("arrival"),
+      this.look,
+      (currentPosition, attemptedPosition, radius) =>
+        this.obstacles.resolveOnFootMovement("arrival", currentPosition, attemptedPosition, radius)
+    );
     const arrival = this.obstacles.getArrivalInfo(this.character);
     const optional = this.obstacles.getArrivalOptionalInfo(this.character);
     const interact = this.consumeInteract();
