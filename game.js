@@ -545,7 +545,7 @@ export class Game {
     };
     this.summary = null;
     this.helpOpen = false;
-    this.shipCameraMode = "cockpit";
+    this.shipCameraMode = "close";
     this.setLookFromTarget(
       departure.characterSpawn.x,
       departure.characterSpawn.z,
@@ -554,7 +554,7 @@ export class Game {
       -0.08
     );
     this.state = "boarding";
-    this.setToast("Courier deployed. Reach the cargo manifest.", 2.4);
+    this.setToast("Courier deployed. Check in with the dock foreman.", 2.4);
     this.updateModeVisibility();
     this.requestPointerLock();
     this.renderUI();
@@ -628,19 +628,31 @@ export class Game {
       (currentPosition, attemptedPosition, radius) =>
         this.obstacles.resolveOnFootMovement("boarding", currentPosition, attemptedPosition, radius)
     );
+    const worker = this.obstacles.getWorkerInfo(this.character);
     const cargo = this.obstacles.getCargoCheckpointInfo(this.character);
     const boarding = this.obstacles.getBoardingInfo(this.character);
     const interact = this.consumeInteract();
 
     this.statusText = `${this.segment.departure.planetLabel} cargo terminal`;
 
-    if (!this.run.cargoSecured) {
-      this.objectiveText = "Reach the yellow cargo zone and log the manifest.";
+    if (!this.run.workerCheckedIn) {
+      this.objectiveText = "Walk to the foreman and get boarding clearance.";
+      this.promptText = worker.inZone
+        ? "Press E to get the cargo assignment."
+        : worker.nearZone
+          ? "Step fully into the foreman zone."
+          : "Follow the blue beacon to the dock foreman.";
+      if (worker.inZone && interact) {
+        this.run.workerCheckedIn = true;
+        this.setToast("Foreman: Manifest is on the cargo stack. Pick it up, then board.", 2.6);
+      }
+    } else if (!this.run.cargoSecured) {
+      this.objectiveText = "Reach the cargo stack and secure the manifest.";
       this.promptText = cargo.inZone
-        ? "Press E to log the cargo manifest."
+        ? "Press E to take the manifest case."
         : cargo.nearZone
-          ? "Move fully into the yellow cargo zone."
-          : "Follow the yellow beacon to the cargo checkpoint.";
+          ? "Step fully into the yellow cargo zone."
+          : "Follow the yellow beacon to the cargo stack.";
       if (cargo.inZone && interact) {
         this.run.cargoSecured = true;
         this.run.cargoLoaded = 3;
@@ -649,15 +661,16 @@ export class Game {
         this.setToast("Manifest secured. Carry it to the boarding ramp.", 2.2);
       }
     } else {
-      this.objectiveText = "Move to the cyan ramp zone and board the freighter.";
+      this.objectiveText = "Move to the freighter ramp and board the ship.";
       this.promptText = boarding.inZone
         ? "Press E to board the ship."
         : boarding.nearZone
-          ? "Step fully into the cyan ramp zone."
+          ? "Step fully onto the boarding ramp."
           : "Follow the cyan beacon to the boarding ramp.";
       if (boarding.inZone && interact) {
         this.character.setCargoCarried(false, true);
         this.state = "launch";
+        this.shipCameraMode = "close";
         this.look.yaw = this.player.orientation;
         this.look.pitch = -0.04;
         this.setToast("Boarded. Press E to ignite launch.", 2.2);
@@ -1330,10 +1343,20 @@ export class Game {
   getCurrentNavigationTarget() {
     if (this.state === "boarding") {
       const departure = this.obstacles.getDepartureWorld();
+      if (!this.run.workerCheckedIn) {
+        return {
+          key: "worker",
+          label: "Dock Foreman",
+          position: {
+            x: (departure.workerZone.minX + departure.workerZone.maxX) / 2,
+            z: (departure.workerZone.minZ + departure.workerZone.maxZ) / 2
+          }
+        };
+      }
       if (!this.run.cargoSecured) {
         return {
           key: "cargo",
-          label: "Cargo Checkpoint",
+          label: "Cargo Stack",
           position: {
             x: (departure.cargoZone.minX + departure.cargoZone.maxX) / 2,
             z: (departure.cargoZone.minZ + departure.cargoZone.maxZ) / 2
@@ -1794,6 +1817,7 @@ export class Game {
     return {
       routeProgress: 0,
       fuel: 0,
+      workerCheckedIn: false,
       cargoProgress: 0,
       cargoLoaded: 0,
       cargoSecured: false,

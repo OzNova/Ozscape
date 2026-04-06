@@ -508,8 +508,8 @@ export class ShipPlayer {
     this.closeChaseAnchor.position.set(-27, 10.2, 0);
     this.farChaseAnchor = new THREE.Object3D();
     this.farChaseAnchor.position.set(-49, 17.6, 0);
-    this.firstPersonHidden = [cockpitBase, noseBridge, canopyGlass, canopyFrameRear, canopyFrameTop, canopyFrameLeft, canopyFrameRight, dashboard, dashboardLight, sideConsoleLeft, sideConsoleRight, bridgeMount];
-    this.firstPersonVisibleOnly = [canopyFrameFront];
+    this.firstPersonHidden = [cockpitBase, noseBridge, canopyGlass, canopyFrameFront, canopyFrameRear, canopyFrameTop, canopyFrameLeft, canopyFrameRight, dashboard, dashboardLight, sideConsoleLeft, sideConsoleRight, bridgeMount];
+    this.firstPersonVisibleOnly = [];
     this.firstPersonMode = false;
 
     const runningLights = [
