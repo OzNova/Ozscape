@@ -693,12 +693,12 @@ export class Game {
       this.input,
       deltaTime,
       {
-        minX: departure.shipSpawn.x - 4,
-        maxX: departure.departureLane.spaceBreakX + 24,
+        minX: departure.shipSpawn.x - 80,
+        maxX: departure.departureLane.spaceBreakX + 180,
         minY: 3.8,
-        maxY: departure.departureLane.targetY + 60,
-        minZ: -52,
-        maxZ: 52
+        maxY: departure.departureLane.targetY + 110,
+        minZ: departure.departureLane.minZ,
+        maxZ: departure.departureLane.maxZ
       },
       this.save.upgrades,
       launchForce,
@@ -765,12 +765,13 @@ export class Game {
       return;
     }
 
-    if (
-      this.player.position.x >= departure.departureLane.spaceBreakX &&
-      this.player.position.y >= departure.departureLane.targetY * 0.88
-    ) {
+    const routeStartX = this.obstacles.getRouteStartX();
+    if (launchForce.phase === "orbitalBreak" && this.player.position.y >= departure.departureLane.targetY * 0.78) {
+      this.player.position.x = Math.max(this.player.position.x, routeStartX - 80);
+      this.player.position.z *= 0.55;
+      this.player.syncSceneObject();
       this.state = "routeFlight";
-      this.run.routeProgress = this.player.position.x;
+      this.run.routeProgress = Math.max(this.player.position.x, routeStartX);
       this.look.pitch = 0;
       this.setToast(`Atmosphere cleared. The long-haul route to ${this.segment.stationLabel} is now live.`, 2.8);
     }
@@ -806,10 +807,10 @@ export class Game {
       {
         minX: this.obstacles.getRouteStartX() - 180,
         maxX: this.obstacles.getRouteLength() + 120,
-        minY: -90,
-        maxY: 210,
-        minZ: -240,
-        maxZ: 240
+        minY: -180,
+        maxY: 320,
+        minZ: -420,
+        maxZ: 420
       },
       this.save.upgrades,
       environment,
@@ -1427,7 +1428,7 @@ export class Game {
     const height = canvas.height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const range = this.state === "launch" ? 1800 : this.isShipState() ? 3200 : 220;
+    const range = this.state === "launch" ? 2400 : this.isShipState() ? 4400 : 220;
     const points = this.obstacles.getNavigationPoints(this.run.wormholeUsed);
     const trackedPosition = this.isOnFootState() ? this.character.position : this.player.position;
     const trackedYaw = this.isOnFootState() ? this.look.yaw : this.look.yaw;
@@ -1494,20 +1495,20 @@ export class Game {
     if (this.isShipState() || this.state === "launch") {
       points.routeEvents?.forEach((event) => drawPoint(event.x, event.z, event.type === "relay" ? "#c4b5fd" : event.type === "ring" ? "#fbbf24" : "#67e8f9", 2.2));
       points.stopovers?.forEach((stopover, index) => {
-        drawPoint(stopover.x, stopover.z, index === 0 ? "#38bdf8" : "#f59e0b", target?.label === this.segment.stopovers?.[index]?.label ? 4.6 : 3.4);
+        drawPoint(stopover.x, stopover.z, index === 0 ? "#38bdf8" : "#f59e0b", target?.label === this.segment.stopovers?.[index]?.label ? 6.2 : 4);
       });
-      drawPoint(points.gate.x, points.gate.z, "#4ade80", target?.key === "gate" ? 4.6 : 3.4);
+      drawPoint(points.gate.x, points.gate.z, "#4ade80", target?.key === "gate" ? 6.2 : 4.2);
     }
     if ((this.isShipState() || this.state === "launch") && points.wormhole) {
-      drawPoint(points.wormhole.x, points.wormhole.z, "#f472b6", 3.5);
+      drawPoint(points.wormhole.x, points.wormhole.z, "#f472b6", 4.2);
     }
     if (this.isShipState() || this.state === "launch") {
       points.optionalTasks
         ?.filter((task) => !this.run.optionalTaskIds.includes(task.id))
-        .forEach((task) => drawPoint(task.x, task.z, "#facc15", 2.8));
+        .forEach((task) => drawPoint(task.x, task.z, "#facc15", 3.5));
     }
     if ((this.isOnFootState() || this.state === "launch") && target?.position) {
-      drawPoint(target.position.x, target.position.z, target.key === "delivery" ? "#4ade80" : target.key === "cargo" ? "#fbbf24" : "#67e8f9", 4.4);
+      drawPoint(target.position.x, target.position.z, target.key === "delivery" ? "#4ade80" : target.key === "cargo" ? "#fbbf24" : "#67e8f9", 6.4);
     }
 
     ctx.save();
@@ -1762,7 +1763,7 @@ export class Game {
     const handling = safeInteger(upgrades.handling);
     return {
       cruiseSpeed: 112 + engine * 12,
-      maxFuel: Math.max(1, 520 + fuelTank * 80),
+      maxFuel: Math.max(1, 640 + fuelTank * 110),
       handlingFactor: 1 + handling * 0.1,
       dockingAssist: durability * 0.24 + handling * 0.1,
       wormholeAssist: engine * 0.13 + handling * 0.1

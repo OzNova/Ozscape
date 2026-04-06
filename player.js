@@ -290,11 +290,11 @@ export class ShipPlayer {
     this.height = 4.8;
     this.baseAcceleration = 16.8;
     this.baseLateralAcceleration = 7.6;
-    this.baseVerticalAcceleration = 22.5;
-    this.baseMaxForwardSpeed = 114;
+    this.baseVerticalAcceleration = 26.5;
+    this.baseMaxForwardSpeed = 122;
     this.baseMaxLateralSpeed = 16.4;
-    this.baseMaxVerticalSpeed = 22;
-    this.baseLift = 16.5;
+    this.baseMaxVerticalSpeed = 28;
+    this.baseLift = 19.5;
     this.collisionRadius = 4.5;
     this.group = this.createModel();
     this.reset({ x, y: 3.8, z }, { engine: 0, handling: 0, durability: 0 });
@@ -415,6 +415,10 @@ export class ShipPlayer {
     cockpitBase.position.set(2.75, 1.12, 0);
     cockpitBase.castShadow = true;
 
+    const noseBridge = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.9, 1.9), hullMaterial);
+    noseBridge.position.set(4.9, 0.78, 0);
+    noseBridge.castShadow = true;
+
     const canopyGlass = new THREE.Mesh(new THREE.BoxGeometry(2.72, 1.06, 1.78), canopyMaterial);
     canopyGlass.position.set(2.95, 1.46, 0);
 
@@ -468,6 +472,12 @@ export class ShipPlayer {
     const maneuverPodRight = maneuverPodLeft.clone();
     maneuverPodRight.position.z = 2.48;
 
+    const radiatorLeft = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.12, 1.7), frameMaterial);
+    radiatorLeft.position.set(-3.6, 0.1, -3.24);
+    radiatorLeft.castShadow = true;
+    const radiatorRight = radiatorLeft.clone();
+    radiatorRight.position.z = 3.24;
+
     const attitudeThrusterLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.52, 10), trimMaterial);
     attitudeThrusterLeft.rotation.z = -Math.PI / 2;
     attitudeThrusterLeft.position.set(1.5, -0.12, -3.06);
@@ -491,14 +501,14 @@ export class ShipPlayer {
     this.thrusterGlow.position.set(-11.2, 0.1, 0);
 
     this.cameraAnchor = new THREE.Object3D();
-    this.cameraAnchor.position.set(4.96, 2.16, 0);
+    this.cameraAnchor.position.set(5.18, 2.08, 0);
     this.cameraLookAnchor = new THREE.Object3D();
     this.cameraLookAnchor.position.set(28, 2.28, 0);
     this.closeChaseAnchor = new THREE.Object3D();
     this.closeChaseAnchor.position.set(-27, 10.2, 0);
     this.farChaseAnchor = new THREE.Object3D();
     this.farChaseAnchor.position.set(-49, 17.6, 0);
-    this.firstPersonHidden = [cockpitBase, canopyGlass, canopyFrameRear, canopyFrameTop, canopyFrameLeft, canopyFrameRight, dashboard, dashboardLight, sideConsoleLeft, sideConsoleRight, bridgeMount];
+    this.firstPersonHidden = [cockpitBase, noseBridge, canopyGlass, canopyFrameRear, canopyFrameTop, canopyFrameLeft, canopyFrameRight, dashboard, dashboardLight, sideConsoleLeft, sideConsoleRight, bridgeMount];
     this.firstPersonVisibleOnly = [canopyFrameFront];
     this.firstPersonMode = false;
 
@@ -536,6 +546,7 @@ export class ShipPlayer {
       cargoRailLeft,
       cargoRailRight,
       cockpitBase,
+      noseBridge,
       canopyGlass,
       canopyFrameFront,
       canopyFrameRear,
@@ -556,6 +567,8 @@ export class ShipPlayer {
       skidStrutD,
       maneuverPodLeft,
       maneuverPodRight,
+      radiatorLeft,
+      radiatorRight,
       attitudeThrusterLeft,
       attitudeThrusterRight,
       dorsalArray,
