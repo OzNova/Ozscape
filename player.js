@@ -288,13 +288,13 @@ export class ShipPlayer {
     this.width = 11.4;
     this.depth = 8.4;
     this.height = 4.8;
-    this.baseAcceleration = 16.8;
+    this.baseAcceleration = 15.9;
     this.baseLateralAcceleration = 7.6;
-    this.baseVerticalAcceleration = 26.5;
-    this.baseMaxForwardSpeed = 122;
+    this.baseVerticalAcceleration = 31.5;
+    this.baseMaxForwardSpeed = 118;
     this.baseMaxLateralSpeed = 16.4;
-    this.baseMaxVerticalSpeed = 28;
-    this.baseLift = 19.5;
+    this.baseMaxVerticalSpeed = 32;
+    this.baseLift = 23.5;
     this.collisionRadius = 4.5;
     this.group = this.createModel();
     this.reset({ x, y: 3.8, z }, { engine: 0, handling: 0, durability: 0 });
@@ -341,26 +341,46 @@ export class ShipPlayer {
       metalness: 0.48
     });
 
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(1.72, 5.6, 10), hullMaterial);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(1.72, 6.4, 10), hullMaterial);
     nose.rotation.z = -Math.PI / 2;
-    nose.position.x = 6.8;
+    nose.position.x = 7.3;
     nose.castShadow = true;
 
-    const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.16, 11.8, 18), hullMaterial);
+    const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(1.86, 2.24, 12.8, 18), hullMaterial);
     fuselage.rotation.z = -Math.PI / 2;
     fuselage.castShadow = true;
 
-    const lowerHull = new THREE.Mesh(new THREE.BoxGeometry(10.8, 2.05, 4.25), plateMaterial);
-    lowerHull.position.set(-0.6, -0.48, 0);
+    const lowerHull = new THREE.Mesh(new THREE.BoxGeometry(11.8, 2.05, 4.35), plateMaterial);
+    lowerHull.position.set(-0.9, -0.46, 0);
     lowerHull.castShadow = true;
 
-    const cargoBody = new THREE.Mesh(new THREE.BoxGeometry(8.6, 3.05, 4.36), frameMaterial);
-    cargoBody.position.set(-4.3, 0.26, 0);
+    const cargoBody = new THREE.Mesh(new THREE.BoxGeometry(9.4, 3.18, 4.48), frameMaterial);
+    cargoBody.position.set(-4.9, 0.28, 0);
     cargoBody.castShadow = true;
 
-    const cargoSpine = new THREE.Mesh(new THREE.BoxGeometry(7.8, 1.1, 1.6), hullMaterial);
-    cargoSpine.position.set(-4.2, 1.58, 0);
+    const cargoSpine = new THREE.Mesh(new THREE.BoxGeometry(8.6, 1.18, 1.72), hullMaterial);
+    cargoSpine.position.set(-4.8, 1.62, 0);
     cargoSpine.castShadow = true;
+
+    const noseFairing = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.22, 2.08), hullMaterial);
+    noseFairing.position.set(4.86, 0.18, 0);
+    noseFairing.castShadow = true;
+
+    const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.3, 2.44), frameMaterial);
+    bridgeDeck.position.set(1.12, 1.96, 0);
+    bridgeDeck.castShadow = true;
+
+    const hullChineLeft = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.24, 0.92), frameMaterial);
+    hullChineLeft.position.set(0.4, -0.92, -1.86);
+    hullChineLeft.castShadow = true;
+    const hullChineRight = hullChineLeft.clone();
+    hullChineRight.position.z = 1.86;
+
+    const cargoShoulderLeft = new THREE.Mesh(new THREE.BoxGeometry(7.4, 1.22, 0.24), hullMaterial);
+    cargoShoulderLeft.position.set(-4.8, 1.06, -2.14);
+    cargoShoulderLeft.castShadow = true;
+    const cargoShoulderRight = cargoShoulderLeft.clone();
+    cargoShoulderRight.position.z = 2.14;
 
     const dorsalFin = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.7, 0.36), frameMaterial);
     dorsalFin.position.set(-0.8, 1.76, 0);
@@ -390,6 +410,12 @@ export class ShipPlayer {
     centerEngine.position.set(-9.1, 0.06, 0);
     centerEngine.castShadow = true;
 
+    const engineShroudLeft = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.24, 1.16), frameMaterial);
+    engineShroudLeft.position.set(-7.95, 0.18, -1.52);
+    engineShroudLeft.castShadow = true;
+    const engineShroudRight = engineShroudLeft.clone();
+    engineShroudRight.position.z = 1.52;
+
     const engineRingLeft = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.09, 10, 18), trimMaterial);
     engineRingLeft.rotation.y = Math.PI / 2;
     engineRingLeft.position.set(-10.15, -0.1, -1.52);
@@ -410,6 +436,14 @@ export class ShipPlayer {
     cargoRailLeft.position.set(-4.3, 0.48, -2.22);
     const cargoRailRight = cargoRailLeft.clone();
     cargoRailRight.position.z = 2.22;
+
+    const cargoBayFrame = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.86, 0.14), frameMaterial);
+    cargoBayFrame.position.set(-1.7, 0.32, -2.3);
+    cargoBayFrame.castShadow = true;
+    const cargoBayDoor = new THREE.Mesh(new THREE.BoxGeometry(2.32, 1.42, 0.1), plateMaterial);
+    cargoBayDoor.position.set(-1.72, 0.26, -2.38);
+    const cargoBayStrip = new THREE.Mesh(new THREE.BoxGeometry(2.18, 0.08, 0.08), trimMaterial);
+    cargoBayStrip.position.set(-1.72, 1.08, -2.42);
 
     const cockpitBase = new THREE.Mesh(new THREE.BoxGeometry(3.1, 1.4, 2.1), frameMaterial);
     cockpitBase.position.set(2.75, 1.12, 0);
@@ -472,6 +506,10 @@ export class ShipPlayer {
     const maneuverPodRight = maneuverPodLeft.clone();
     maneuverPodRight.position.z = 2.48;
 
+    const ventralKeel = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.28, 1.42), frameMaterial);
+    ventralKeel.position.set(-4.8, -1.12, 0);
+    ventralKeel.castShadow = true;
+
     const radiatorLeft = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.12, 1.7), frameMaterial);
     radiatorLeft.position.set(-3.6, 0.1, -3.24);
     radiatorLeft.castShadow = true;
@@ -501,13 +539,13 @@ export class ShipPlayer {
     this.thrusterGlow.position.set(-11.2, 0.1, 0);
 
     this.cameraAnchor = new THREE.Object3D();
-    this.cameraAnchor.position.set(5.18, 2.08, 0);
+    this.cameraAnchor.position.set(5.4, 2.12, 0);
     this.cameraLookAnchor = new THREE.Object3D();
-    this.cameraLookAnchor.position.set(28, 2.28, 0);
+    this.cameraLookAnchor.position.set(32, 2.2, 0);
     this.closeChaseAnchor = new THREE.Object3D();
-    this.closeChaseAnchor.position.set(-27, 10.2, 0);
+    this.closeChaseAnchor.position.set(-24, 8.8, 0);
     this.farChaseAnchor = new THREE.Object3D();
-    this.farChaseAnchor.position.set(-49, 17.6, 0);
+    this.farChaseAnchor.position.set(-44, 14.8, 0);
     this.firstPersonHidden = [cockpitBase, noseBridge, canopyGlass, canopyFrameFront, canopyFrameRear, canopyFrameTop, canopyFrameLeft, canopyFrameRight, dashboard, dashboardLight, sideConsoleLeft, sideConsoleRight, bridgeMount];
     this.firstPersonVisibleOnly = [];
     this.firstPersonMode = false;
@@ -530,6 +568,12 @@ export class ShipPlayer {
       lowerHull,
       cargoBody,
       cargoSpine,
+      noseFairing,
+      bridgeDeck,
+      hullChineLeft,
+      hullChineRight,
+      cargoShoulderLeft,
+      cargoShoulderRight,
       dorsalFin,
       ventralFin,
       sideFinLeft,
@@ -537,6 +581,8 @@ export class ShipPlayer {
       enginePodLeft,
       enginePodRight,
       centerEngine,
+      engineShroudLeft,
+      engineShroudRight,
       engineRingLeft,
       engineRingRight,
       engineRingCenter,
@@ -545,6 +591,9 @@ export class ShipPlayer {
       cargoRibC,
       cargoRailLeft,
       cargoRailRight,
+      cargoBayFrame,
+      cargoBayDoor,
+      cargoBayStrip,
       cockpitBase,
       noseBridge,
       canopyGlass,
@@ -567,6 +616,7 @@ export class ShipPlayer {
       skidStrutD,
       maneuverPodLeft,
       maneuverPodRight,
+      ventralKeel,
       radiatorLeft,
       radiatorRight,
       attitudeThrusterLeft,
@@ -714,8 +764,8 @@ export class ShipPlayer {
   syncSceneObject() {
     this.group.position.set(this.position.x, this.position.y, this.position.z);
     this.group.rotation.y = -this.renderOrientation;
-    this.group.rotation.z = clamp(-this.velocity.z * 0.01, -0.12, 0.12);
-    this.group.rotation.x = clamp(-this.renderPitch * 0.32 + this.velocity.y * 0.011, -0.18, 0.18);
+    this.group.rotation.z = clamp(-this.velocity.z * 0.0046, -0.06, 0.06);
+    this.group.rotation.x = clamp(-this.renderPitch * 0.24 + this.velocity.y * 0.0075, -0.12, 0.12);
     const flameScale = this.lastBoosting ? 1.8 : this.lastThrusting ? 1.32 : 0.55;
     this.leftFlame.scale.set(1, flameScale, 1);
     this.rightFlame.scale.set(1, flameScale, 1);
@@ -762,7 +812,7 @@ export class ShipPlayer {
       mesh.visible = true;
       mesh.scale.setScalar(enabled ? 0.82 : 1);
     });
-    this.cameraAnchor.position.set(enabled ? 4.96 : 2.9, enabled ? 2.16 : 1.46, 0);
+    this.cameraAnchor.position.set(enabled ? 5.08 : 3.1, enabled ? 2.08 : 1.5, 0);
   }
 }
 

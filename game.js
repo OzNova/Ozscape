@@ -131,8 +131,8 @@ const SEGMENTS = [
     ],
     corridorAnchors: [
       { worldX: 0, worldY: 360, width: 220, sector: "Departure Transfer", beat: "Freight lane handoff", assist: 4.2 },
-      { worldX: 5200, worldY: 300, width: 180, sector: "Fracture Belt", beat: "Debris braid", assist: 3.6 },
-      { worldX: 11200, worldY: 560, width: 156, sector: "Fracture Belt", beat: "Upper split channel", assist: 3.9 },
+      { worldX: 5200, worldY: 300, width: 212, sector: "Khepri Orbit", beat: "Orbital traffic lane", assist: 4.05 },
+      { worldX: 11200, worldY: 420, width: 184, sector: "Leviathan Approach", beat: "Station beacon corridor", assist: 4.1 },
       { worldX: 17800, worldY: 240, width: 172, sector: "Atlas Ring Skim", beat: "Ring-shadow slip", assist: 3.4 },
       { worldX: 25600, worldY: 470, width: 164, sector: "Atlas Ring Skim", beat: "Gravity shear lane", assist: 3.2 },
       { worldX: 33200, worldY: 200, width: 176, sector: "Relay Corridor", beat: "Traffic blackout run", assist: 3.3 },
@@ -142,7 +142,7 @@ const SEGMENTS = [
     ],
     routeEvents: [
       { id: "traffic", type: "traffic", label: "Freight lane handoff", worldX: 3200, worldY: 340, span: 2200, width: 190, sector: "Departure Transfer" },
-      { id: "braid", type: "braid", label: "Debris braid", worldX: 9800, worldY: 430, span: 3000, width: 170, sector: "Fracture Belt" },
+      { id: "braid", type: "braid", label: "Fracture entry braid", worldX: 15400, worldY: 430, span: 3000, width: 170, sector: "Fracture Belt" },
       { id: "ring", type: "ring", label: "Ring-shadow slip", worldX: 22400, worldY: 250, span: 3600, width: 200, sector: "Atlas Ring Skim" },
       { id: "relay", type: "relay", label: "Relay pylon weave", worldX: 39600, worldY: 420, span: 3200, width: 180, sector: "Relay Corridor" },
       { id: "terminal", type: "terminal", label: "Helios insertion lane", worldX: 50000, worldY: 310, span: 2600, width: 210, sector: "Helios Approach" }
@@ -439,8 +439,10 @@ export class Game {
   }
 
   cycleShipCamera() {
-    const currentIndex = this.shipCameraModes.indexOf(this.shipCameraMode);
-    this.shipCameraMode = this.shipCameraModes[(currentIndex + 1) % this.shipCameraModes.length];
+    const availableModes = this.getAvailableShipCameraModes();
+    const currentIndex = availableModes.indexOf(this.shipCameraMode);
+    this.shipCameraMode = availableModes[(currentIndex + 1) % availableModes.length];
+    this.updateModeVisibility();
     this.setToast(`Camera: ${this.getShipCameraLabel()}`, 1.2);
     this.renderUI();
   }
@@ -546,11 +548,12 @@ export class Game {
     this.summary = null;
     this.helpOpen = false;
     this.shipCameraMode = "close";
+    this.obstacles.setDepartureManifestVisible(true);
     this.setLookFromTarget(
       departure.characterSpawn.x,
       departure.characterSpawn.z,
-      (departure.cargoZone.minX + departure.cargoZone.maxX) / 2,
-      (departure.cargoZone.minZ + departure.cargoZone.maxZ) / 2,
+      (departure.workerZone.minX + departure.workerZone.maxX) / 2,
+      (departure.workerZone.minZ + departure.workerZone.maxZ) / 2,
       -0.08
     );
     this.state = "boarding";
@@ -658,6 +661,7 @@ export class Game {
         this.run.cargoLoaded = 3;
         this.run.cargoProgress = 1;
         this.character.setCargoCarried(true);
+        this.obstacles.setDepartureManifestVisible(false);
         this.setToast("Manifest secured. Carry it to the boarding ramp.", 2.2);
       }
     } else {
@@ -733,6 +737,11 @@ export class Game {
     const yProgress = clamp(this.player.position.y / Math.max(departure.departureLane.targetY, 1), 0, 1);
     this.run.launchProgress = Math.max(this.run.launchProgress, xProgress * 0.55 + yProgress * 0.45);
     this.run.launchPhase = launchForce.phase;
+    if ((launchForce.phase === "surface" || launchForce.phase === "lowerAtmosphere") && this.shipCameraMode === "cockpit") {
+      this.shipCameraMode = "close";
+      this.updateModeVisibility();
+      this.setToast("Cockpit camera unlocks after upper atmosphere.", 1.6);
+    }
 
     const phaseCopy =
       launchForce.phase === "surface"
@@ -1190,19 +1199,19 @@ export class Game {
       this.character.setVisible(false);
       this.character.setFirstPersonView(false);
       this.player.setVisible(true);
-      this.player.setFirstPersonView(true);
+      this.player.setFirstPersonView(this.shipCameraMode === "cockpit");
     } else if (this.state === "routeFlight" || this.state === "docking") {
       this.obstacles.setMode("flight");
       this.character.setVisible(false);
       this.character.setFirstPersonView(false);
       this.player.setVisible(true);
-      this.player.setFirstPersonView(true);
+      this.player.setFirstPersonView(this.shipCameraMode === "cockpit");
     } else if (this.state === "wormholeTransit") {
       this.obstacles.setMode("wormhole");
       this.character.setVisible(false);
       this.character.setFirstPersonView(false);
       this.player.setVisible(true);
-      this.player.setFirstPersonView(true);
+      this.player.setFirstPersonView(this.shipCameraMode === "cockpit");
     } else if (this.state === "hub") {
       this.obstacles.setMode("hub", { stopover: this.getActiveStopover() });
       this.character.setVisible(true);
@@ -1337,7 +1346,14 @@ export class Game {
   }
 
   getShipCameraLabel() {
-    return this.shipCameraMode === "cockpit" ? "Cockpit" : this.shipCameraMode === "close" ? "Chase" : "Far Chase";
+    return this.shipCameraMode === "cockpit" ? "Cockpit" : this.shipCameraMode === "close" ? "Close Chase" : "Far Chase";
+  }
+
+  getAvailableShipCameraModes() {
+    if (this.state === "launch" && (this.run.launchPhase === "surface" || this.run.launchPhase === "lowerAtmosphere")) {
+      return ["close", "far"];
+    }
+    return this.shipCameraModes;
   }
 
   getCurrentNavigationTarget() {
@@ -1745,7 +1761,7 @@ export class Game {
 
   buildHelpMarkup() {
     const stateCard = this.isShipState()
-      ? `<div class="help-card"><h3>Current Phase</h3><p>Ship flight: use <strong>C</strong> to cycle cockpit, chase, and far-chase cameras. Thrust with <strong>W/S</strong>, trim with <strong>A/D</strong>, rise with <strong>Space</strong>, descend with <strong>Ctrl</strong>, and hold <strong>Shift</strong> to boost. The ship now drives toward where you look, and the radar tracks stopovers, side tasks, and sector beats.</p></div>`
+      ? `<div class="help-card"><h3>Current Phase</h3><p>Ship flight: use <strong>C</strong> to cycle close chase, cockpit, and far-chase cameras. Thrust with <strong>W/S</strong>, trim with <strong>A/D</strong>, rise with <strong>Space</strong>, descend with <strong>Ctrl</strong>, and hold <strong>Shift</strong> to boost. During takeoff the chase cameras stay primary until the upper atmosphere clears.</p></div>`
       : this.isOnFootState()
         ? `<div class="help-card"><h3>Current Phase</h3><p>Courier first-person: click the view to capture the mouse, use <strong>WASD</strong> to move, hold <strong>Shift</strong> to sprint, follow the floor guides and radar, and press <strong>E</strong> when you are fully inside the highlighted interaction zone.</p></div>`
         : `<div class="help-card"><h3>Current Phase</h3><p>Use the command card to begin or continue the current contract. Once you are in gameplay, click the view to capture the mouse and press <strong>H</strong> anytime to reopen this help panel.</p></div>`;
@@ -1758,7 +1774,7 @@ export class Game {
       </div>
       <div class="help-card">
         <h3>Contract Flow</h3>
-        <p>At the port, walk to the yellow cargo zone and press <strong>E</strong> to pick up the manifest case. Board the ship, launch off-world, complete the mandatory stopovers, take optional bonuses when it makes sense, then finish the delivery at Helios Deep Terminal.</p>
+        <p>At the port, check in with the foreman first, collect the glowing manifest case from the cargo stack, then carry it to the lit boarding ramp. After launch, climb through the haze until the orbital beacons hand you off toward Leviathan Refuel Station.</p>
       </div>
       <div class="help-card">
         <h3>Route Rules</h3>
